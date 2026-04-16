@@ -1,8 +1,25 @@
 # LaunchDarkly 私有化部署说明（索引版）
 
-> 本文档不再维护完整 Flag 列表，也不重复展开 YAML / Unleash / Flagsmith / Flipt 的全部实现细节。
+> 本文档是 **LaunchDarkly 专题索引文档**：回答“当前代码如何接入 LaunchDarkly、离线模式如何工作、私有化时为什么通常不需要保留它”。
 >
-> **主文档请看：** `FeatureFlags私有化部署方案.md`
+> 相关文档：
+> - `README.md`：仓库总入口与文档导航
+> - `FeatureFlags私有化部署方案.md`：Feature Flags 主文档，含完整默认值与替代方案
+> - `核心组件详解.md`：Feature Flags 在整体架构中的作用
+> - `启动参数详解.md`：`LAUNCH_DARKLY_API_KEY` 等运行时配置
+
+---
+
+## 阅读导航
+
+### 如果你只想知道“不配 LaunchDarkly 能不能跑”
+- 看 **2. 当前代码中的 LaunchDarkly 行为**
+
+### 如果你想要完整 Feature Flags 替代方案
+- 看 `FeatureFlags私有化部署方案.md`
+
+### 如果你只是查环境变量
+- 看 `启动参数详解.md`
 
 ---
 

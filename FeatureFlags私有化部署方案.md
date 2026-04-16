@@ -3,6 +3,7 @@
 > 本文档是 **Feature Flags 私有化部署主文档**：负责维护完整 Flag 清单、默认值、YAML/Unleash 方案与代码改造建议。
 >
 > 相关文档：
+> - `README.md`：仓库总入口与文档导航
 > - `LaunchDarkly私有化部署方案.md`：LaunchDarkly 现状、离线模式与阅读路径索引
 > - `核心组件详解.md`：Feature Flags 在整体架构里的作用
 > - `启动参数详解.md`：运行时环境变量（如 `LAUNCH_DARKLY_API_KEY`）
