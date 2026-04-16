@@ -16,10 +16,10 @@
 - 看 [**2. 当前代码中的 LaunchDarkly 行为**](#2-当前代码中的-launchdarkly-行为)
 
 ### 如果你想要完整 Feature Flags 替代方案
-- 看 [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md)
+- 看 [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航)
 
 ### 如果你只是查环境变量
-- 看 [`启动参数详解.md`](./启动参数详解.md)
+- 看 [`启动参数详解.md`](./启动参数详解.md#阅读导航)
 
 ---
 

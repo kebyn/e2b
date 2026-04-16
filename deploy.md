@@ -13,13 +13,13 @@
 ## Reading guide
 
 ### If you want the supported production path
-- Do **not** start here; use [`self-host.md`](./self-host.md) or [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md)
+- Do **not** start here; use [`self-host.md`](./self-host.md#reading-guide) or [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md#阅读导航)
 
 ### If you want a quick local / experimental bootstrap
 - Use this file as a scratchpad sequence
 
 ### If you want a maintained local development workflow
-- Use [`DEV-LOCAL.md`](./DEV-LOCAL.md)
+- Use [`DEV-LOCAL.md`](./DEV-LOCAL.md#system-prep)
 
 ---
 

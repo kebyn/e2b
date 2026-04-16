@@ -17,13 +17,13 @@
 - Follow this document
 
 ### If you want a manual/no-code deployment walkthrough
-- See [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md)
+- See [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md#阅读导航)
 
 ### If you already deployed and now need HA verification
-- See [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md)
+- See [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md#5-高可用验证)
 
 ### If you need to understand specific variables in `.env.*`
-- See [`启动参数详解.md`](./启动参数详解.md)
+- See [`启动参数详解.md`](./启动参数详解.md#阅读导航)
 
 ## Prerequisites
 
