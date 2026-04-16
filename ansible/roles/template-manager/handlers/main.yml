@@ -1,0 +1,4 @@
+---
+- name: restart template-manager
+  shell: nomad job restart e2b-template-manager
+  delegate_to: "{{ groups['nomad_server'][0] }}"

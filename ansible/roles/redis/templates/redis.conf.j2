@@ -1,0 +1,37 @@
+# Redis 配置
+
+bind 0.0.0.0
+port {{ redis_port }}
+daemonize no
+supervised systemd
+
+# 持久化
+appendonly yes
+appendfsync everysec
+
+# 内存
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy allkeys-lru
+
+# 密码
+{% if redis_requirepass %}
+requirepass {{ redis_requirepass }}
+{% endif %}
+
+# 主从复制
+{% if redis_role == 'slave' %}
+replicaof {{ hostvars[groups['redis'] | selectattr('redis_role', 'equalto', 'master') | first]['ansible_host'] }} {{ redis_port }}
+{% if redis_requirepass %}
+masterauth {{ redis_requirepass }}
+{% endif %}
+{% endif %}
+
+# 安全
+protected-mode yes
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+
+# 日志
+loglevel notice
+logfile /var/log/redis/redis-server.log

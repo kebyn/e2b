@@ -1,0 +1,22 @@
+[Unit]
+Description=E2B Dashboard Frontend
+Documentation=https://e2b.dev/docs
+After=network.target e2b-dashboard-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=e2b
+Group=e2b
+WorkingDirectory=/opt/e2b/dashboard
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+
+# 资源限制
+CPUQuota={{ dashboard_cpu_limit | default('100%') }}
+MemoryMax={{ dashboard_memory_limit | default('512M') }}
+
+[Install]
+WantedBy=multi-user.target

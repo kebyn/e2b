@@ -1,0 +1,5 @@
+---
+- name: restart client-proxy
+  systemd:
+    name: e2b-client-proxy
+    state: restarted

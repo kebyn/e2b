@@ -1,0 +1,4 @@
+---
+- name: restart orchestrator
+  shell: nomad job restart e2b-orchestrator
+  delegate_to: "{{ groups['nomad_server'][0] }}"

@@ -1,0 +1,164 @@
+# Ingress Configuration for Daytona
+#
+# Prerequisites:
+#   1. Nginx Ingress Controller installed
+#      helm install ingress-nginx ingress-nginx/ingress-nginx \
+#        --namespace ingress-nginx --create-namespace \
+#        --set controller.config.proxy-body-size="100m" \
+#        --set controller.config.use-forwarded-headers="true"
+#
+#   2. cert-manager installed (for TLS)
+#      helm install cert-manager jetstack/cert-manager \
+#        --namespace cert-manager --create-namespace \
+#        --set crds.enabled=true
+#
+#   3. Wildcard DNS: *.sandbox.company.com -> Ingress LB IP
+#
+# Apply:
+#   kubectl apply -f 05-ingress/
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: daytona-letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@company.com
+    privateKeySecretRef:
+      name: daytona-letsencrypt-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+---
+# TLS Certificate for all Daytona domains
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: daytona-tls
+  namespace: daytona
+spec:
+  secretName: daytona-tls
+  issuerRef:
+    name: daytona-letsencrypt
+    kind: ClusterIssuer
+  dnsNames:
+  - "api.sandbox.company.com"
+  - "*.sandbox.company.com"
+  # Use DNS01 solver for wildcard certs:
+  # solvers:
+  # - dns01:
+  #     cloudflare:
+  #       apiTokenSecretRef:
+  #         name: cloudflare-api-token
+  #         key: api-token
+---
+# Ingress for API + Dashboard
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: daytona-api
+  namespace: daytona
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    cert-manager.io/cluster-issuer: "daytona-letsencrypt"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.sandbox.company.com
+    secretName: daytona-tls
+  rules:
+  - host: api.sandbox.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: daytona-api
+            port:
+              number: 3000
+---
+# Ingress for Sandbox Proxy (wildcard)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: daytona-proxy
+  namespace: daytona
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      # WebSocket support for sandbox access
+      location ~* ^/ {
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+      }
+    cert-manager.io/cluster-issuer: "daytona-letsencrypt"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - "*.sandbox.company.com"
+    secretName: daytona-tls
+  rules:
+  - host: "*.sandbox.company.com"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: daytona-proxy
+            port:
+              number: 4000
+---
+# Ingress for SSH Gateway (TCP passthrough)
+# Nginx Ingress requires TCP configmap for non-HTTP traffic
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcp-services
+  namespace: ingress-nginx
+data:
+  "2222": "daytona/daytona-ssh-gateway:2222"
+---
+# Ingress for Jaeger UI (optional, internal only)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: daytona-jaeger
+  namespace: daytona
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "daytona-basic-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Monitoring"
+    cert-manager.io/cluster-issuer: "daytona-letsencrypt"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - jaeger.sandbox.company.com
+    secretName: daytona-tls
+  rules:
+  - host: jaeger.sandbox.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: daytona-jaeger-query
+            port:
+              number: 16686

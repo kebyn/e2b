@@ -1,0 +1,89 @@
+---
+- name: 部署 E2B 生产环境
+  hosts: e2b
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: 安装基础依赖
+      apt:
+        name:
+          - curl
+          - wget
+          - gnupg
+          - lsb-release
+          - unzip
+          - jq
+        state: present
+        update_cache: yes
+
+    - name: 创建 E2B 用户
+      user:
+        name: e2b
+        system: yes
+        shell: /bin/bash
+        create_home: no
+
+    - name: 创建 E2B 目录
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: e2b
+        group: e2b
+        mode: '0755'
+      loop:
+        - "{{ e2b_base_dir }}"
+        - "{{ e2b_orchestrator_path }}"
+        - "{{ e2b_fc_vm_dir }}"
+        - "{{ e2b_kernels_dir }}"
+        - "{{ e2b_firecracker_dir }}"
+        - "{{ e2b_envd_path | dirname }}"
+
+  roles:
+    - role: postgresql
+      when: "'postgresql' in group_names"
+      tags: [postgresql]
+
+    - role: redis
+      when: "'redis' in group_names"
+      tags: [redis]
+
+    - role: nomad
+      when: "'nomad_server' in group_names or 'nomad_client' in group_names"
+      tags: [nomad]
+
+    - role: api
+      when: "'api' in group_names"
+      tags: [api]
+
+    - role: client-proxy
+      when: "'client_proxy' in group_names"
+      tags: [client-proxy]
+
+    - role: orchestrator
+      when: "'nomad_client' in group_names"
+      tags: [orchestrator]
+
+    - role: template-manager
+      when: "'nomad_client' in group_names and template_manager_enabled | default(false)"
+      tags: [template-manager]
+
+    - role: dashboard-api
+      when: "'dashboard_api' in group_names and dashboard_enabled | default(false)"
+      tags: [dashboard, dashboard-api]
+
+    - role: dashboard
+      when: "'dashboard' in group_names and dashboard_enabled | default(false)"
+      tags: [dashboard, dashboard-frontend]
+
+    - role: nginx
+      when: "'lb' in group_names"
+      tags: [nginx]
+
+  post_tasks:
+    - name: 部署完成提示
+      debug:
+        msg: |
+          E2B 部署完成!
+          API 地址: http://{{ api_domain }}
+          Sandbox 代理: http://{{ sandbox_domain }}

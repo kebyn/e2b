@@ -1,0 +1,50 @@
+---
+# API 服务部署
+
+- name: 复制 API 二进制文件
+  copy:
+    src: ../../packages/api/bin/api
+    dest: /usr/local/bin/api
+    owner: e2b
+    group: e2b
+    mode: '0755'
+
+- name: 创建 API 配置目录
+  file:
+    path: /etc/e2b
+    state: directory
+    owner: e2b
+    group: e2b
+    mode: '0750'
+
+- name: 配置 API 环境变量
+  template:
+    src: api.env.j2
+    dest: /etc/e2b/api.env
+    owner: e2b
+    group: e2b
+    mode: '0640'
+  notify: restart api
+
+- name: 创建 API Systemd 服务
+  template:
+    src: e2b-api.service.j2
+    dest: /etc/systemd/system/e2b-api.service
+    mode: '0644'
+  notify: restart api
+
+- name: 重新加载 Systemd
+  systemd:
+    daemon_reload: yes
+
+- name: 启动 API 服务
+  systemd:
+    name: e2b-api
+    state: started
+    enabled: yes
+
+- name: 等待 API 就绪
+  wait_for:
+    port: "{{ api_port }}"
+    delay: 5
+    timeout: 60

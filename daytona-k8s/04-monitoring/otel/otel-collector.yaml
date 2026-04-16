@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: daytona-otel-collector-config
+  namespace: daytona
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 1024
+        spike_limit_mib: 256
+
+    exporters:
+      debug:
+        verbosity: normal
+      prometheus:
+        endpoint: "0.0.0.0:9090"
+        namespace: daytona
+      otlp/jaeger:
+        endpoint: "daytona-jaeger-collector:4317"
+        tls:
+          insecure: true
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/jaeger, debug]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: daytona-otel-collector
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-otel-collector
+    app.kubernetes.io/part-of: daytona
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daytona-otel-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: daytona-otel-collector
+    spec:
+      containers:
+      - name: collector
+        image: otel/opentelemetry-collector-contrib:0.138.0
+        args:
+        - --config=/etc/otelcol/config.yaml
+        ports:
+        - containerPort: 4317
+          name: otlp-grpc
+        - containerPort: 4318
+          name: otlp-http
+        - containerPort: 9090
+          name: prometheus
+        - containerPort: 13133
+          name: health
+        resources:
+          requests:
+            cpu: "250m"
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        volumeMounts:
+        - name: config
+          mountPath: /etc/otelcol
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: daytona-otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: daytona-otel-collector
+  namespace: daytona
+spec:
+  selector:
+    app.kubernetes.io/name: daytona-otel-collector
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+  - name: prometheus
+    port: 9090
+    targetPort: 9090

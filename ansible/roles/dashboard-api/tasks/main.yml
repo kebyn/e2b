@@ -1,0 +1,50 @@
+---
+# Dashboard API 部署
+
+- name: 复制 Dashboard API 二进制文件
+  copy:
+    src: ../../packages/dashboard-api/bin/dashboard-api
+    dest: /usr/local/bin/dashboard-api
+    owner: e2b
+    group: e2b
+    mode: '0755'
+
+- name: 创建配置目录
+  file:
+    path: /etc/e2b
+    state: directory
+    owner: e2b
+    group: e2b
+    mode: '0750'
+
+- name: 配置 Dashboard API 环境变量
+  template:
+    src: dashboard-api.env.j2
+    dest: /etc/e2b/dashboard-api.env
+    owner: e2b
+    group: e2b
+    mode: '0640'
+  notify: restart dashboard-api
+
+- name: 创建 Dashboard API Systemd 服务
+  template:
+    src: e2b-dashboard-api.service.j2
+    dest: /etc/systemd/system/e2b-dashboard-api.service
+    mode: '0644'
+  notify: restart dashboard-api
+
+- name: 重新加载 Systemd
+  systemd:
+    daemon_reload: yes
+
+- name: 启动 Dashboard API
+  systemd:
+    name: e2b-dashboard-api
+    state: started
+    enabled: yes
+
+- name: 等待 Dashboard API 就绪
+  wait_for:
+    port: "{{ dashboard_api_port }}"
+    delay: 5
+    timeout: 60

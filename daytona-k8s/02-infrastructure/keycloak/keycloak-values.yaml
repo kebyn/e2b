@@ -1,0 +1,62 @@
+auth:
+  adminUser: admin
+  adminPassword: ""  # Set via --set or existingSecret
+  # existingSecret: daytona-keycloak
+  # existingSecretPasswordKey: admin-password
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: ""
+
+service:
+  type: ClusterIP
+
+extraEnvVars:
+  - name: KC_DB
+    value: postgres
+  - name: KC_DB_URL
+    value: jdbc:postgresql://daytona-postgres-rw:5432/keycloak
+  - name: KC_DB_USERNAME
+    value: daytona
+  - name: KC_DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: daytona-db
+        key: password
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_PROXY
+    value: edge
+  - name: KC_HTTP_RELATIVE_PATH
+    value: /
+  - name: KC_HEALTH_ENABLED
+    value: "true"
+  - name: KC_METRICS_ENABLED
+    value: "true"
+
+startupProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 5
+  failureThreshold: 60
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 0
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 0
+  periodSeconds: 5

@@ -1,0 +1,226 @@
+# ============================================================
+# E2B Prometheus Recording Rules
+# 用于预计算常用指标，提升查询性能
+# ============================================================
+
+groups:
+  # ============================================================
+  # 1. API 聚合指标
+  # ============================================================
+  - name: e2b.api.recording
+    interval: 30s
+    rules:
+      - record: e2b:api:http_requests:rate5m
+        expr: sum(rate(http_requests_total{job="e2b-api"}[5m]))
+
+      - record: e2b:api:http_requests_errors:rate5m
+        expr: sum(rate(http_requests_total{job="e2b-api", status_code=~"5.."}[5m]))
+
+      - record: e2b:api:http_request_duration:p99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="e2b-api"}[5m])) by (le)
+          )
+
+      - record: e2b:api:http_request_duration:p95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="e2b-api"}[5m])) by (le)
+          )
+
+      - record: e2b:api:http_request_duration:p50
+        expr: |
+          histogram_quantile(0.50,
+            sum(rate(http_request_duration_seconds_bucket{job="e2b-api"}[5m])) by (le)
+          )
+
+      - record: e2b:api:error_rate:ratio5m
+        expr: |
+          e2b:api:http_requests_errors:rate5m
+          /
+          e2b:api:http_requests:rate5m
+
+  # ============================================================
+  # 2. Sandbox 聚合指标
+  # ============================================================
+  - name: e2b.sandbox.recording
+    interval: 15s
+    rules:
+      - record: e2b:sandbox:running:total
+        expr: sum(e2b_sandbox_running_count)
+
+      - record: e2b:sandbox:created:rate5m
+        expr: sum(rate(e2b_sandbox_created_total[5m]))
+
+      - record: e2b:sandbox:destroyed:rate5m
+        expr: sum(rate(e2b_sandbox_destroyed_total[5m]))
+
+      - record: e2b:sandbox:create_duration:p99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(e2b_sandbox_create_duration_seconds_bucket[5m])) by (le)
+          )
+
+      - record: e2b:sandbox:duration:p99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(e2b_sandbox_duration_seconds_bucket[5m])) by (le)
+          )
+
+      - record: e2b:sandbox:by_team:running
+        expr: sum(e2b_sandbox_running_count) by (team_id)
+
+      - record: e2b:sandbox:by_template:running
+        expr: sum(e2b_sandbox_running_count) by (template_id)
+
+  # ============================================================
+  # 3. 数据库聚合指标
+  # ============================================================
+  - name: e2b.postgresql.recording
+    interval: 30s
+    rules:
+      - record: e2b:postgresql:connections:active
+        expr: pg_stat_activity_count{job="e2b-postgresql", state="active"}
+
+      - record: e2b:postgresql:connections:idle
+        expr: pg_stat_activity_count{job="e2b-postgresql", state="idle"}
+
+      - record: e2b:postgresql:connections:total
+        expr: pg_stat_activity_count{job="e2b-postgresql"}
+
+      - record: e2b:postgresql:connection_usage:ratio
+        expr: |
+          pg_stat_activity_count{job="e2b-postgresql"}
+          /
+          pg_settings_max_connections{job="e2b-postgresql"}
+
+      - record: e2b:postgresql:replication_lag:seconds
+        expr: pg_replication_lag_seconds{job="e2b-postgresql"}
+
+      - record: e2b:postgresql:cache_hit_rate:ratio
+        expr: |
+          pg_stat_database_blks_hit{datname="e2b"}
+          /
+          (pg_stat_database_blks_hit{datname="e2b"} + pg_stat_database_blks_read{datname="e2b"})
+
+      - record: e2b:postgresql:transactions:rate5m
+        expr: rate(pg_stat_database_xact_commit{datname="e2b"}[5m])
+
+      - record: e2b:postgresql:deadlocks:rate5m
+        expr: rate(pg_stat_database_deadlocks{datname="e2b"}[5m])
+
+  # ============================================================
+  # 4. Redis 聚合指标
+  # ============================================================
+  - name: e2b.redis.recording
+    interval: 30s
+    rules:
+      - record: e2b:redis:memory_usage:ratio
+        expr: |
+          redis_memory_used_bytes{job="e2b-redis"}
+          /
+          redis_memory_max_bytes{job="e2b-redis"}
+
+      - record: e2b:redis:hit_rate:ratio5m
+        expr: |
+          rate(redis_keyspace_hits_total{job="e2b-redis"}[5m])
+          /
+          (
+            rate(redis_keyspace_hits_total{job="e2b-redis"}[5m])
+            +
+            rate(redis_keyspace_misses_total{job="e2b-redis"}[5m])
+          )
+
+      - record: e2b:redis:connections:total
+        expr: redis_connected_clients{job="e2b-redis"}
+
+      - record: e2b:redis:commands:rate5m
+        expr: rate(redis_commands_processed_total{job="e2b-redis"}[5m])
+
+      - record: e2b:redis:evictions:rate5m
+        expr: rate(redis_evicted_keys_total{job="e2b-redis"}[5m])
+
+      - record: e2b:redis:rejected_connections:rate5m
+        expr: rate(redis_rejected_connections_total{job="e2b-redis"}[5m])
+
+  # ============================================================
+  # 5. Nomad 聚合指标
+  # ============================================================
+  - name: e2b.nomad.recording
+    interval: 30s
+    rules:
+      - record: e2b:nomad:allocs:running
+        expr: sum(nomad_client_allocs_running)
+
+      - record: e2b:nomad:allocs:pending
+        expr: sum(nomad_client_allocs_pending)
+
+      - record: e2b:nomad:allocs:failed
+        expr: sum(nomad_client_allocs_failed)
+
+      - record: e2b:nomad:cpu:allocated:total
+        expr: sum(nomad_client_allocated_cpu)
+
+      - record: e2b:nomad:cpu:unallocated:total
+        expr: sum(nomad_client_unallocated_cpu)
+
+      - record: e2b:nomad:memory:allocated:total
+        expr: sum(nomad_client_allocated_memory)
+
+      - record: e2b:nomad:memory:unallocated:total
+        expr: sum(nomad_client_unallocated_memory)
+
+      - record: e2b:nomad:nodes:ready
+        expr: count(nomad_client_host_cpu_idle > 0)
+
+  # ============================================================
+  # 6. 系统资源聚合指标
+  # ============================================================
+  - name: e2b.system.recording
+    interval: 30s
+    rules:
+      - record: e2b:system:cpu_usage:percent
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance) * 100)
+
+      - record: e2b:system:memory_usage:percent
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+
+      - record: e2b:system:disk_usage:percent
+        expr: |
+          (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100
+
+      - record: e2b:system:disk_io:utilization
+        expr: rate(node_disk_io_time_seconds_total[5m])
+
+      - record: e2b:system:network_receive:bytes_rate
+        expr: sum(rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*"}[5m])) by (instance)
+
+      - record: e2b:system:network_transmit:bytes_rate
+        expr: sum(rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*"}[5m])) by (instance)
+
+  # ============================================================
+  # 7. gRPC 聚合指标
+  # ============================================================
+  - name: e2b.grpc.recording
+    interval: 30s
+    rules:
+      - record: e2b:grpc:requests:rate5m
+        expr: sum(rate(grpc_server_handled_total{job=~"e2b-.*"}[5m]))
+
+      - record: e2b:grpc:requests_errors:rate5m
+        expr: sum(rate(grpc_server_handled_total{job=~"e2b-.*", grpc_code!="OK"}[5m]))
+
+      - record: e2b:grpc:error_rate:ratio5m
+        expr: |
+          e2b:grpc:requests_errors:rate5m
+          /
+          e2b:grpc:requests:rate5m
+
+      - record: e2b:grpc:latency:p99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(grpc_server_handling_seconds_bucket{job=~"e2b-.*"}[5m])) by (le)
+          )
+
+      - record: e2b:grpc:by_service:requests:rate5m
+        expr: sum(rate(grpc_server_handled_total{job=~"e2b-.*"}[5m])) by (grpc_service, grpc_method)

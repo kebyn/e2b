@@ -1,0 +1,245 @@
+# ============================================================
+# E2B Prometheus 配置
+# 文件: prometheus/prometheus.yml
+# ============================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: e2b-prod
+    environment: production
+
+# ============================================================
+# 告警规则文件
+# ============================================================
+rule_files:
+  - "alerts/e2b-alerts.yml"
+  - "alerts/recording-rules.yml"
+
+# ============================================================
+# Alertmanager 配置
+# ============================================================
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+      timeout: 10s
+
+# ============================================================
+# 数据源配置 (Thanos / VictoriaMetrics 可选)
+# ============================================================
+# remote_write:
+#   - url: http://victoriametrics:8428/api/v1/write
+#     queue_config:
+#       max_samples_per_send: 10000
+#       batch_send_deadline: 5s
+
+# remote_read:
+#   - url: http://victoriametrics:8428/api/v1/read
+#     read_recent: true
+
+# ============================================================
+# 抓取配置
+# ============================================================
+scrape_configs:
+  # ----------------------------------------------------------
+  # API 服务
+  # ----------------------------------------------------------
+  - job_name: e2b-api
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - api-1:6060
+          - api-2:6060
+          - api-3:6060
+        labels:
+          service: api
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+
+  # ----------------------------------------------------------
+  # Client Proxy
+  # ----------------------------------------------------------
+  - job_name: e2b-client-proxy
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - proxy-1:6060
+          - proxy-2:6060
+        labels:
+          service: client-proxy
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+
+  # ----------------------------------------------------------
+  # Orchestrator
+  # ----------------------------------------------------------
+  - job_name: e2b-orchestrator
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - compute-1:6060
+          - compute-2:6060
+          - compute-3:6060
+        labels:
+          service: orchestrator
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+
+  # ----------------------------------------------------------
+  # PostgreSQL (通过 postgres_exporter)
+  # ----------------------------------------------------------
+  - job_name: e2b-postgresql
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - postgres-exporter:9187
+        labels:
+          service: postgresql
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+
+  # ----------------------------------------------------------
+  # Redis (通过 redis_exporter)
+  # ----------------------------------------------------------
+  - job_name: e2b-redis
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - redis-exporter:9121
+        labels:
+          service: redis
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+
+  # ----------------------------------------------------------
+  # Nomad (原生指标)
+  # ----------------------------------------------------------
+  - job_name: nomad
+    metrics_path: /v1/metrics
+    params:
+      format: ['prometheus']
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - nomad-1:4646
+          - nomad-2:4646
+          - nomad-3:4646
+        labels:
+          service: nomad
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+
+  # ----------------------------------------------------------
+  # Node Exporter (系统指标)
+  # ----------------------------------------------------------
+  - job_name: node
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - node-exporter-1:9100
+          - node-exporter-2:9100
+          - node-exporter-3:9100
+          - node-exporter-4:9100
+          - node-exporter-5:9100
+          - node-exporter-6:9100
+        labels:
+          service: node
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+
+  # ----------------------------------------------------------
+  # ClickHouse (可选)
+  # ----------------------------------------------------------
+  - job_name: e2b-clickhouse
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - clickhouse:9363
+        labels:
+          service: clickhouse
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+    # 如果 ClickHouse 未部署，可注释掉整个 job
+
+  # ----------------------------------------------------------
+  # Loki (可选，仅健康检查)
+  # ----------------------------------------------------------
+  - job_name: e2b-loki
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - loki:3100
+        labels:
+          service: loki
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+    # 如果 Loki 未部署，可注释掉整个 job
+
+  # ----------------------------------------------------------
+  # Nginx (可选，通过 nginx_exporter)
+  # ----------------------------------------------------------
+  - job_name: e2b-nginx
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - nginx-exporter:9113
+        labels:
+          service: nginx
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+    # 如果 Nginx 未部署，可注释掉整个 job
+
+  # ----------------------------------------------------------
+  # Prometheus 自监控
+  # ----------------------------------------------------------
+  - job_name: prometheus
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - localhost:9090
+        labels:
+          service: prometheus

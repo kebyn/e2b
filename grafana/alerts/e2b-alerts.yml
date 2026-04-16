@@ -1,0 +1,803 @@
+# ============================================================
+# E2B Prometheus 告警规则
+# 文件: prometheus/alerts/e2b-alerts.yml
+# ============================================================
+
+groups:
+  # ============================================================
+  # 1. 服务可用性告警
+  # ============================================================
+  - name: e2b.service.availability
+    rules:
+      - alert: E2BServiceDown
+        expr: up{job=~"e2b-.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "服务不可用: {{ $labels.job }}"
+          description: "{{ $labels.job }} 服务在 {{ $labels.instance }} 上已停止运行"
+          runbook_url: "https://wiki.example.com/runbooks/e2b-service-down"
+
+      - alert: E2BAPIInstanceDown
+        expr: up{job="e2b-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "API 实例不可用"
+          description: "API 实例 {{ $labels.instance }} 已宕机超过 1 分钟"
+
+      - alert: E2BProxyInstanceDown
+        expr: up{job="e2b-client-proxy"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Client Proxy 实例不可用"
+          description: "Client Proxy 实例 {{ $labels.instance }} 已宕机超过 1 分钟"
+
+      - alert: E2BOrchestratorInstanceDown
+        expr: up{job="e2b-orchestrator"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Orchestrator 实例不可用"
+          description: "Orchestrator 实例 {{ $labels.instance }} 已宕机超过 2 分钟"
+
+      - alert: E2BServiceRestarting
+        expr: changes(process_start_time_seconds{job=~"e2b-.*"}[10m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+          category: stability
+        annotations:
+          summary: "服务频繁重启: {{ $labels.job }}"
+          description: "{{ $labels.job }} 在 {{ $labels.instance }} 上 10 分钟内重启了 {{ $value }} 次"
+
+  # ============================================================
+  # 2. API 性能告警
+  # ============================================================
+  - name: e2b.api.performance
+    rules:
+      - alert: E2BAPIHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="e2b-api", status_code=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="e2b-api"}[5m]))
+          > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          category: performance
+        annotations:
+          summary: "API 5xx 错误率过高"
+          description: "API 5xx 错误率超过 5%，当前: {{ $value | humanizePercentage }}"
+
+      - alert: E2BAPIHigh4xxRate
+        expr: |
+          sum(rate(http_requests_total{job="e2b-api", status_code=~"4.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="e2b-api"}[5m]))
+          > 0.15
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "API 4xx 错误率偏高"
+          description: "API 4xx 错误率超过 15%，当前: {{ $value | humanizePercentage }}"
+
+      - alert: E2BAPIHighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="e2b-api"}[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "API P99 延迟过高"
+          description: "API P99 延迟超过 2 秒，当前: {{ $value | humanizeDuration }}"
+
+      - alert: E2BAPIHighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="e2b-api"}[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "API P95 延迟过高"
+          description: "API P95 延迟超过 1 秒，当前: {{ $value | humanizeDuration }}"
+
+      - alert: E2BAPIEndpointHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="e2b-api"}[5m])) by (le, handler)
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "API 端点延迟过高: {{ $labels.handler }}"
+          description: "端点 {{ $labels.handler }} P99 延迟超过 5 秒"
+
+      - alert: E2BAPILowThroughput
+        expr: sum(rate(http_requests_total{job="e2b-api"}[5m])) < 1
+        for: 10m
+        labels:
+          severity: info
+          category: performance
+        annotations:
+          summary: "API 请求量过低"
+          description: "API 请求速率低于 1 req/s，可能存在问题"
+
+  # ============================================================
+  # 3. Sandbox 告警
+  # ============================================================
+  - name: e2b.sandbox
+    rules:
+      - alert: E2BSandboxLimitReached
+        expr: sum(e2b_sandbox_running_count) > 150
+        for: 5m
+        labels:
+          severity: warning
+          category: capacity
+        annotations:
+          summary: "Sandbox 数量接近上限"
+          description: "运行中 Sandbox 数量: {{ $value }}"
+
+      - alert: E2BSandboxCriticalLimit
+        expr: sum(e2b_sandbox_running_count) > 180
+        for: 2m
+        labels:
+          severity: critical
+          category: capacity
+        annotations:
+          summary: "Sandbox 数量达到危险水平"
+          description: "运行中 Sandbox 数量: {{ $value }}，接近系统上限"
+
+      - alert: E2BSandboxCreateFailed
+        expr: rate(e2b_sandbox_create_failed_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: sandbox
+        annotations:
+          summary: "Sandbox 创建失败率过高"
+          description: "Sandbox 创建失败速率: {{ $value }}/s"
+
+      - alert: E2BSandboxCreateHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(e2b_sandbox_create_duration_seconds_bucket[5m])) by (le)
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+          category: sandbox
+        annotations:
+          summary: "Sandbox 创建延迟过高"
+          description: "Sandbox 创建 P99 延迟: {{ $value | humanizeDuration }}"
+
+      - alert: E2BSandboxSuspendFailed
+        expr: rate(e2b_sandbox_suspend_failed_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: sandbox
+        annotations:
+          summary: "Sandbox 暂停失败率过高"
+          description: "Sandbox 暂停失败速率: {{ $value }}/s"
+
+      - alert: E2BSandboxResumeFailed
+        expr: rate(e2b_sandbox_resume_failed_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: sandbox
+        annotations:
+          summary: "Sandbox 恢复失败率过高"
+          description: "Sandbox 恢复失败速率: {{ $value }}/s"
+
+      - alert: E2BTeamSandboxLimitExceeded
+        expr: e2b_sandbox_running_count > 50
+        for: 5m
+        labels:
+          severity: warning
+          category: sandbox
+        annotations:
+          summary: "团队 Sandbox 数量过多: {{ $labels.team_id }}"
+          description: "团队 {{ $labels.team_id }} 运行 {{ $value }} 个 Sandbox"
+
+  # ============================================================
+  # 4. PostgreSQL 告警
+  # ============================================================
+  - name: e2b.postgresql
+    rules:
+      - alert: PostgreSQLDown
+        expr: up{job="e2b-postgresql"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL 不可用"
+          description: "PostgreSQL 实例 {{ $labels.instance }} 已宕机"
+
+      - alert: PostgreSQLConnectionLimit
+        expr: |
+          pg_stat_activity_count{job="e2b-postgresql"}
+          /
+          pg_settings_max_connections{job="e2b-postgresql"}
+          > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL 连接数接近上限"
+          description: "PostgreSQL 连接使用率: {{ $value | humanizePercentage }}"
+
+      - alert: PostgreSQLConnectionLimitCritical
+        expr: |
+          pg_stat_activity_count{job="e2b-postgresql"}
+          /
+          pg_settings_max_connections{job="e2b-postgresql"}
+          > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL 连接数即将耗尽"
+          description: "PostgreSQL 连接使用率: {{ $value | humanizePercentage }}"
+
+      - alert: PostgreSQLTooManyIdleConnections
+        expr: pg_stat_activity_count{job="e2b-postgresql", state="idle"} > 50
+        for: 10m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL 空闲连接过多"
+          description: "PostgreSQL 空闲连接数: {{ $value }}"
+
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_seconds{job="e2b-postgresql"} > 5
+        for: 2m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL 复制延迟过高"
+          description: "PostgreSQL 复制延迟: {{ $value | humanizeDuration }}"
+
+      - alert: PostgreSQLReplicationLagWarning
+        expr: pg_replication_lag_seconds{job="e2b-postgresql"} > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL 复制延迟偏高"
+          description: "PostgreSQL 复制延迟: {{ $value | humanizeDuration }}"
+
+      - alert: PostgreSQLDeadlocks
+        expr: rate(pg_stat_database_deadlocks{datname="e2b"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL 存在死锁"
+          description: "PostgreSQL 死锁速率: {{ $value }}/s"
+
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_stat_activity_max_tx_duration{datname="e2b"}[5m]) > 300
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL 存在慢查询"
+          description: "PostgreSQL 最长事务持续时间超过 5 分钟"
+
+      - alert: PostgreSQLCacheHitRateLow
+        expr: |
+          pg_stat_database_blks_hit{datname="e2b"}
+          /
+          (pg_stat_database_blks_hit{datname="e2b"} + pg_stat_database_blks_read{datname="e2b"})
+          < 0.95
+        for: 10m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL 缓存命中率过低"
+          description: "PostgreSQL 缓存命中率: {{ $value | humanizePercentage }}"
+
+      - alert: PostgreSQLTransactionWraparound
+        expr: pg_database_datfrozenxid{datname="e2b"} > 1500000000
+        for: 1h
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL 事务 ID 回卷风险"
+          description: "PostgreSQL 事务 ID 接近回卷阈值，需要执行 VACUUM"
+
+  # ============================================================
+  # 5. Redis 告警
+  # ============================================================
+  - name: e2b.redis
+    rules:
+      - alert: RedisDown
+        expr: up{job="e2b-redis"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: cache
+        annotations:
+          summary: "Redis 不可用"
+          description: "Redis 实例 {{ $labels.instance }} 已宕机"
+
+      - alert: RedisMemoryHigh
+        expr: |
+          redis_memory_used_bytes{job="e2b-redis"}
+          /
+          redis_memory_max_bytes{job="e2b-redis"}
+          > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 内存使用率过高"
+          description: "Redis 内存使用率: {{ $value | humanizePercentage }}"
+
+      - alert: RedisMemoryCritical
+        expr: |
+          redis_memory_used_bytes{job="e2b-redis"}
+          /
+          redis_memory_max_bytes{job="e2b-redis"}
+          > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          category: cache
+        annotations:
+          summary: "Redis 内存即将耗尽"
+          description: "Redis 内存使用率: {{ $value | humanizePercentage }}"
+
+      - alert: RedisConnectionLimit
+        expr: redis_connected_clients{job="e2b-redis"} > 500
+        for: 5m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 连接数过高"
+          description: "Redis 连接数: {{ $value }}"
+
+      - alert: RedisLowHitRate
+        expr: |
+          rate(redis_keyspace_hits_total{job="e2b-redis"}[5m])
+          /
+          (
+            rate(redis_keyspace_hits_total{job="e2b-redis"}[5m])
+            +
+            rate(redis_keyspace_misses_total{job="e2b-redis"}[5m])
+          )
+          < 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 命中率过低"
+          description: "Redis 命中率: {{ $value | humanizePercentage }}"
+
+      - alert: RedisRejectedConnections
+        expr: rate(redis_rejected_connections_total{job="e2b-redis"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 拒绝连接"
+          description: "Redis 拒绝连接速率: {{ $value }}/s"
+
+      - alert: RedisCommandsBlocked
+        expr: redis_blocked_clients{job="e2b-redis"} > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 存在阻塞命令"
+          description: "Redis 阻塞客户端数: {{ $value }}"
+
+      - alert: RedisSlowLog
+        expr: increase(redis_slowlog_length{job="e2b-redis"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 慢查询增多"
+          description: "Redis 5 分钟内新增慢查询: {{ $value }}"
+
+      - alert: RedisKeyEviction
+        expr: rate(redis_evicted_keys_total{job="e2b-redis"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 键淘汰率过高"
+          description: "Redis 键淘汰速率: {{ $value }}/s"
+
+      - alert: RedisSentinelMasterDown
+        expr: sentinel_master_status == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: cache
+        annotations:
+          summary: "Redis Sentinel 主节点宕机"
+          description: "Redis Sentinel 报告主节点不可用"
+
+      - alert: RedisReplicationLag
+        expr: redis_replication_offset_diff{job="e2b-redis"} > 10000000
+        for: 5m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Redis 复制延迟过高"
+          description: "Redis 复制偏移量差异: {{ $value }} bytes"
+
+  # ============================================================
+  # 6. Nomad 告警
+  # ============================================================
+  - name: e2b.nomad
+    rules:
+      - alert: NomadServerDown
+        expr: nomad_raft_leader == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: orchestration
+        annotations:
+          summary: "Nomad 集群无 Leader"
+          description: "Nomad 集群在过去 1 分钟内无 Leader"
+
+      - alert: NomadJobFailed
+        expr: nomad_client_allocs_failed > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: orchestration
+        annotations:
+          summary: "Nomad 任务失败"
+          description: "Nomad 节点 {{ $labels.node_id }} 有失败的任务"
+
+      - alert: NomadOrchestratorJobNotRunning
+        expr: |
+          count(nomad_client_allocs_running{task_group="orchestrator"}) < 3
+        for: 5m
+        labels:
+          severity: critical
+          category: orchestration
+        annotations:
+          summary: "Orchestrator 任务运行数不足"
+          description: "Orchestrator 运行实例数: {{ $value }}"
+
+      - alert: NomadHighCPUUsage
+        expr: |
+          nomad_client_host_cpu_idle < 20
+        for: 10m
+        labels:
+          severity: warning
+          category: orchestration
+        annotations:
+          summary: "Nomad 节点 CPU 空闲率过低"
+          description: "Nomad 节点 {{ $labels.node_id }} CPU 空闲率: {{ $value }}%"
+
+      - alert: NomadHighMemoryUsage
+        expr: |
+          nomad_client_host_memory_used
+          /
+          nomad_client_host_memory_total
+          > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          category: orchestration
+        annotations:
+          summary: "Nomad 节点内存使用率过高"
+          description: "Nomad 节点 {{ $labels.node_id }} 内存使用率: {{ $value | humanizePercentage }}"
+
+      - alert: NomadDiskLow
+        expr: |
+          nomad_client_host_disk_used
+          /
+          nomad_client_host_disk_total
+          > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          category: orchestration
+        annotations:
+          summary: "Nomad 节点磁盘空间不足"
+          description: "Nomad 节点 {{ $labels.node_id }} 磁盘使用率: {{ $value | humanizePercentage }}"
+
+      - alert: NomadAllocationPending
+        expr: nomad_client_allocs_pending > 0
+        for: 5m
+        labels:
+          severity: warning
+          category: orchestration
+        annotations:
+          summary: "Nomad 存在待调度任务"
+          description: "Nomad 待调度任务数: {{ $value }}"
+
+  # ============================================================
+  # 7. 系统资源告警
+  # ============================================================
+  - name: e2b.system
+    rules:
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "节点 {{ $labels.instance }} CPU 使用率: {{ $value | humanizePercentage }}"
+
+      - alert: CriticalCPUUsage
+        expr: |
+          100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance) * 100) > 95
+        for: 5m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "CPU 使用率危险"
+          description: "节点 {{ $labels.instance }} CPU 使用率: {{ $value | humanizePercentage }}"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "内存使用率过高"
+          description: "节点 {{ $labels.instance }} 内存使用率: {{ $value | humanizePercentage }}"
+
+      - alert: CriticalMemoryUsage
+        expr: |
+          (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "内存使用率危险"
+          description: "节点 {{ $labels.instance }} 内存使用率: {{ $value | humanizePercentage }}"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "磁盘空间不足"
+          description: "节点 {{ $labels.instance }} 根分区可用空间: {{ $value | humanizePercentage }}"
+
+      - alert: DiskSpaceWarning
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 25
+        for: 10m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "磁盘空间偏低"
+          description: "节点 {{ $labels.instance }} 根分区可用空间: {{ $value | humanizePercentage }}"
+
+      - alert: HighDiskIO
+        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "磁盘 I/O 繁忙"
+          description: "节点 {{ $labels.instance }} 磁盘 {{ $labels.device }} I/O 利用率: {{ $value | humanizePercentage }}"
+
+      - alert: HighNetworkErrors
+        expr: |
+          rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "网络错误率过高"
+          description: "节点 {{ $labels.instance }} 网络错误速率: {{ $value }}/s"
+
+      - alert: HighNetworkDrops
+        expr: |
+          rate(node_network_receive_drop_total[5m]) + rate(node_network_transmit_drop_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "网络丢包率过高"
+          description: "节点 {{ $labels.instance }} 网络丢包速率: {{ $value }}/s"
+
+      - alert: NTPNotSynced
+        expr: node_timex_sync_status == 0
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "NTP 时间同步异常"
+          description: "节点 {{ $labels.instance }} 未与 NTP 服务器同步"
+
+      - alert: HighFileDescriptorUsage
+        expr: |
+          node_filefd_allocated / node_filefd_maximum > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "文件描述符使用率过高"
+          description: "节点 {{ $labels.instance }} 文件描述符使用率: {{ $value | humanizePercentage }}"
+
+      - alert: SystemdServiceFailed
+        expr: node_systemd_unit_state{state="failed"} == 1
+        for: 1m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "Systemd 服务失败"
+          description: "节点 {{ $labels.instance }} 服务 {{ $labels.name }} 处于失败状态"
+
+  # ============================================================
+  # 8. Go 运行时告警
+  # ============================================================
+  - name: e2b.golang
+    rules:
+      - alert: GoRoutineLeak
+        expr: go_goroutines{job=~"e2b-.*"} > 10000
+        for: 10m
+        labels:
+          severity: warning
+          category: application
+        annotations:
+          summary: "Goroutine 数量过多: {{ $labels.job }}"
+          description: "{{ $labels.job }} 在 {{ $labels.instance }} 上有 {{ $value }} 个 goroutines"
+
+      - alert: GoGCMemoryHigh
+        expr: |
+          go_memstats_heap_inuse_bytes{job=~"e2b-.*"}
+          /
+          go_memstats_heap_alloc_bytes{job=~"e2b-.*"}
+          > 2
+        for: 10m
+        labels:
+          severity: warning
+          category: application
+        annotations:
+          summary: "Go 堆内存碎片化: {{ $labels.job }}"
+          description: "{{ $labels.job }} 堆内存使用率异常"
+
+      - alert: GoGCPauseHigh
+        expr: rate(go_gc_duration_seconds{job=~"e2b-.*"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: application
+        annotations:
+          summary: "Go GC 暂停时间过长: {{ $labels.job }}"
+          description: "{{ $labels.job }} GC 暂停时间: {{ $value | humanizeDuration }}"
+
+  # ============================================================
+  # 9. ClickHouse 告警 (可选)
+  # ============================================================
+  - name: e2b.clickhouse
+    rules:
+      - alert: ClickHouseDown
+        expr: up{job="e2b-clickhouse"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          category: analytics
+        annotations:
+          summary: "ClickHouse 不可用"
+          description: "ClickHouse 实例 {{ $labels.instance }} 已宕机"
+
+      - alert: ClickHouseHighQueryLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(ClickHouse_ProfileEvent_QueryTimeMicroseconds_bucket[5m])) by (le)
+          ) > 5000000
+        for: 5m
+        labels:
+          severity: warning
+          category: analytics
+        annotations:
+          summary: "ClickHouse 查询延迟过高"
+          description: "ClickHouse P99 查询延迟: {{ $value | humanize }}μs"
+
+      - alert: ClickHouseReplicationLag
+        expr: ClickHouseMetrics_replicated_fetch > 100
+        for: 10m
+        labels:
+          severity: warning
+          category: analytics
+        annotations:
+          summary: "ClickHouse 复制延迟过高"
+          description: "ClickHouse 复制延迟: {{ $value }}"
+
+  # ============================================================
+  # 10. Loki 告警 (可选)
+  # ============================================================
+  - name: e2b.loki
+    rules:
+      - alert: LokiDown
+        expr: up{job="e2b-loki"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          category: logging
+        annotations:
+          summary: "Loki 不可用"
+          description: "Loki 实例 {{ $labels.instance }} 已宕机"
+
+      - alert: LokiHighIngestionLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(loki_distributor_bytes_received_seconds_bucket[5m])) by (le)
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: logging
+        annotations:
+          summary: "Loki 摄取延迟过高"
+          description: "Loki 日志摄取延迟: {{ $value | humanizeDuration }}"
+
+      - alert: LokiIngesterFlushQueueHigh
+        expr: loki_ingester_memory_chunks > 500000
+        for: 10m
+        labels:
+          severity: warning
+          category: logging
+        annotations:
+          summary: "Loki 内存 chunks 过多"
+          description: "Loki Ingester 内存 chunks: {{ $value }}"

@@ -1,0 +1,5 @@
+---
+- name: restart api
+  systemd:
+    name: e2b-api
+    state: restarted

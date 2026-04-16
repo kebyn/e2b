@@ -1,0 +1,65 @@
+---
+# Redis 安装和配置
+
+- name: 添加 Redis APT 仓库
+  apt_repository:
+    repo: "ppa:redislabs/redis"
+    state: present
+    update_cache: yes
+
+- name: 安装 Redis
+  apt:
+    name:
+      - redis-server
+      - redis-sentinel
+    state: present
+
+- name: 配置 Redis
+  template:
+    src: redis.conf.j2
+    dest: /etc/redis/redis.conf
+    owner: redis
+    group: redis
+    mode: '0640'
+  notify: restart redis
+
+- name: 配置 Redis Sentinel
+  template:
+    src: sentinel.conf.j2
+    dest: /etc/redis/sentinel.conf
+    owner: redis
+    group: redis
+    mode: '0640'
+  notify: restart redis-sentinel
+
+- name: 创建 Redis 数据目录
+  file:
+    path: /var/lib/redis
+    state: directory
+    owner: redis
+    group: redis
+    mode: '0750'
+
+- name: 启动 Redis
+  systemd:
+    name: redis-server
+    state: started
+    enabled: yes
+
+- name: 启动 Redis Sentinel
+  systemd:
+    name: redis-sentinel
+    state: started
+    enabled: yes
+
+- name: 等待 Redis 就绪
+  wait_for:
+    port: "{{ redis_port }}"
+    delay: 2
+    timeout: 30
+
+- name: 等待 Sentinel 就绪
+  wait_for:
+    port: "{{ redis_sentinel_port }}"
+    delay: 2
+    timeout: 30

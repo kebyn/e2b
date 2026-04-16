@@ -1,0 +1,68 @@
+# E2B Nginx 负载均衡配置
+
+upstream e2b_api {
+    least_conn;
+    {% for host in groups['api'] %}
+    server {{ hostvars[host]['ansible_host'] }}:{{ api_port }} max_fails=3 fail_timeout=30s;
+    {% endfor %}
+}
+
+upstream e2b_proxy {
+    least_conn;
+    {% for host in groups['client_proxy'] %}
+    server {{ hostvars[host]['ansible_host'] }}:{{ proxy_port }} max_fails=3 fail_timeout=30s;
+    {% endfor %}
+}
+
+# API 服务
+server {
+    listen 80;
+    server_name {{ api_domain }};
+
+    location / {
+        proxy_pass http://e2b_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # 健康检查端点
+    location /health {
+        proxy_pass http://e2b_api;
+        access_log off;
+    }
+}
+
+# Sandbox 代理 (通配符子域)
+server {
+    listen 80;
+    server_name {{ sandbox_domain }};
+
+    location / {
+        proxy_pass http://e2b_proxy;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket 支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # 长连接支持
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # 健康检查端点
+    location /health {
+        proxy_pass http://e2b_proxy;
+        access_log off;
+    }
+}

@@ -1,0 +1,28 @@
+# Nomad 服务器配置
+
+datacenter = "{{ nomad_datacenter }}"
+data_dir   = "/opt/nomad/data"
+
+server {
+  enabled          = true
+  bootstrap_expect = {{ groups['nomad_server'] | length }}
+  
+  server_join {
+    retry_join = [
+      {% for host in groups['nomad_server'] %}
+      "{{ hostvars[host]['ansible_host'] }}:4648"{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ]
+  }
+}
+
+acl {
+  enabled = {{ nomad_acl_enabled | lower }}
+}
+
+telemetry {
+  publish_allocation_metrics = true
+  publish_node_metrics       = true
+}
+
+bind_addr = "0.0.0.0"

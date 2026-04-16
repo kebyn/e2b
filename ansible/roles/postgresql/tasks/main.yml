@@ -1,0 +1,109 @@
+---
+# PostgreSQL 安装和配置
+
+- name: 安装 PostgreSQL {{ postgres_version }}
+  apt:
+    name:
+      - "postgresql-{{ postgres_version }}"
+      - "postgresql-client-{{ postgres_version }}"
+      - "postgresql-contrib-{{ postgres_version }}"
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+
+- name: 配置 PostgreSQL
+  template:
+    src: postgresql.conf.j2
+    dest: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  notify: restart postgresql
+
+- name: 配置 pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: '0640'
+  notify: restart postgresql
+
+- name: 启动 PostgreSQL
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: 等待 PostgreSQL 就绪
+  wait_for:
+    port: "{{ postgres_port }}"
+    delay: 5
+    timeout: 60
+
+- name: 创建数据库用户
+  become_user: postgres
+  postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    role_attr_flags: CREATEDB,SUPERUSER
+    state: present
+  when: pg_role == 'primary'
+
+- name: 创建数据库
+  become_user: postgres
+  postgresql_db:
+    name: "{{ postgres_database }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    state: present
+  when: pg_role == 'primary'
+
+- name: 配置复制用户 (仅主节点)
+  become_user: postgres
+  postgresql_user:
+    name: replicator
+    password: "{{ postgres_password }}"
+    role_attr_flags: REPLICATION,LOGIN
+    state: present
+  when: pg_role == 'primary'
+
+- name: 运行数据库迁移 (仅主节点)
+  shell: |
+    cd /opt/infra
+    make -C packages/db migrate
+  environment:
+    POSTGRES_CONNECTION_STRING: "postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:{{ postgres_port }}/{{ postgres_database }}?sslmode=disable"
+  when:
+    - pg_role == 'primary'
+    - migration_enabled | default(false)
+  run_once: true
+
+- name: 从节点: 停止 PostgreSQL
+  systemd:
+    name: postgresql
+    state: stopped
+  when: pg_role == 'replica'
+
+- name: 从节点: 清空数据目录
+  file:
+    path: "/var/lib/postgresql/{{ postgres_version }}/main"
+    state: absent
+  when: pg_role == 'replica'
+
+- name: 从节点: 基础备份
+  become_user: postgres
+  shell: |
+    pg_basebackup -h {{ hostvars[groups['postgresql'] | selectattr('pg_role', 'equalto', 'primary') | first]['ansible_host'] }} \
+      -D /var/lib/postgresql/{{ postgres_version }}/main \
+      -U replicator -P -v -R -X stream
+  environment:
+    PGPASSWORD: "{{ postgres_password }}"
+  when: pg_role == 'replica'
+
+- name: 从节点: 启动 PostgreSQL
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+  when: pg_role == 'replica'

@@ -1,0 +1,22 @@
+[Unit]
+Description=E2B Client Proxy Service
+Documentation=https://e2b.dev/docs
+After=network.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=e2b
+Group=e2b
+EnvironmentFile=/etc/e2b/client-proxy.env
+ExecStart=/usr/local/bin/client-proxy
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+
+# 资源限制
+CPUQuota={{ proxy_cpu_limit | default('100%') }}
+MemoryMax={{ proxy_memory_limit | default('1G') }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+---
+# Nginx 负载均衡部署
+
+- name: 安装 Nginx
+  apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: 配置 Nginx
+  template:
+    src: e2b.conf.j2
+    dest: /etc/nginx/conf.d/e2b.conf
+    mode: '0644'
+  notify: reload nginx
+
+- name: 删除默认配置
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: 启动 Nginx
+  systemd:
+    name: nginx
+    state: started
+    enabled: yes
+
+- name: 验证 Nginx 配置
+  command: nginx -t
+  changed_when: false

@@ -1,0 +1,103 @@
+---
+# Nomad 安装和配置
+
+- name: 下载 Nomad {{ nomad_version }}
+  get_url:
+    url: "https://releases.hashicorp.com/nomad/{{ nomad_version }}/nomad_{{ nomad_version }}_linux_amd64.zip"
+    dest: "/tmp/nomad_{{ nomad_version }}_linux_amd64.zip"
+    mode: '0644'
+
+- name: 解压 Nomad
+  unarchive:
+    src: "/tmp/nomad_{{ nomad_version }}_linux_amd64.zip"
+    dest: /usr/local/bin/
+    remote_src: yes
+    creates: /usr/local/bin/nomad
+
+- name: 创建 Nomad 配置目录
+  file:
+    path: /etc/nomad.d
+    state: directory
+    mode: '0750'
+
+- name: 创建 Nomad 数据目录
+  file:
+    path: /opt/nomad/data
+    state: directory
+    mode: '0750'
+
+- name: 配置 Nomad 服务器
+  template:
+    src: server.hcl.j2
+    dest: /etc/nomad.d/server.hcl
+    mode: '0640'
+  when: "'nomad_server' in group_names"
+  notify: restart nomad
+
+- name: 配置 Nomad 客户端
+  template:
+    src: client.hcl.j2
+    dest: /etc/nomad.d/client.hcl
+    mode: '0640'
+  when: "'nomad_client' in group_names"
+  notify: restart nomad
+
+- name: 创建 Nomad Systemd 服务
+  template:
+    src: nomad.service.j2
+    dest: /etc/systemd/system/nomad.service
+    mode: '0644'
+  notify: restart nomad
+
+- name: 重新加载 Systemd
+  systemd:
+    daemon_reload: yes
+
+- name: 启动 Nomad
+  systemd:
+    name: nomad
+    state: started
+    enabled: yes
+
+- name: 等待 Nomad 就绪
+  wait_for:
+    port: 4646
+    delay: 5
+    timeout: 60
+
+- name: 初始化 Nomad ACL (仅主服务器)
+  shell: |
+    nomad acl bootstrap -json 2>/dev/null || echo '{"SecretID":"already_initialized"}'
+  register: nomad_acl_bootstrap
+  when:
+    - "'nomad_server' in group_names"
+    - inventory_hostname == groups['nomad_server'][0]
+
+- name: 保存 Nomad Token
+  set_fact:
+    nomad_acl_token: "{{ (nomad_acl_bootstrap.stdout | from_json).SecretID }}"
+  when:
+    - "'nomad_server' in group_names"
+    - inventory_hostname == groups['nomad_server'][0]
+
+- name: 创建 Nomad 策略
+  copy:
+    content: |
+      namespace "default" {
+        policy = "write"
+      }
+      node {
+        policy = "read"
+      }
+    dest: /tmp/e2b-policy.hcl
+    mode: '0640'
+  when:
+    - "'nomad_server' in group_names"
+    - inventory_hostname == groups['nomad_server'][0]
+
+- name: 应用 Nomad 策略
+  shell: |
+    nomad acl policy apply -token {{ hostvars[groups['nomad_server'][0]]['nomad_acl_token'] }} e2b /tmp/e2b-policy.hcl
+  when:
+    - "'nomad_server' in group_names"
+    - inventory_hostname == groups['nomad_server'][0]

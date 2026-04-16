@@ -1,0 +1,54 @@
+# E2B Template Manager Nomad 任务
+# 说明: 使用与 Orchestrator 相同的二进制，ORCHESTRATOR_SERVICES=template-manager
+
+job "e2b-template-manager" {
+  datacenters = ["{{ nomad_datacenter }}"]
+  type        = "service"
+
+  group "template-manager" {
+    count = {{ template_manager_count | default(2) }}
+
+    network {
+      port "grpc"  { static = {{ orchestrator_grpc_port }} }
+      port "proxy" { static = {{ orchestrator_proxy_port }} }
+    }
+
+    task "template-manager" {
+      driver = "exec"
+
+      config {
+        command = "/usr/local/bin/orchestrator"
+      }
+
+      env {
+        NODE_ID                     = "${node.unique.name}"
+        NODE_IP                     = "${attr.unique.network.ip-address}"
+        ENVIRONMENT                 = "{{ environment }}"
+        ORCHESTRATOR_SERVICES       = "template-manager"              # 关键区别
+        REDIS_URL                   = "redis://{{ hostvars[groups['redis_sentinel'][0]]['ansible_host'] }}:{{ redis_sentinel_port }}/0?sentinel=mymaster"
+        TEMPLATE_BUCKET_NAME        = "{{ template_bucket_name }}"
+        BUILD_CACHE_BUCKET_NAME     = "{{ build_cache_bucket_name }}"
+        STORAGE_PROVIDER            = "{{ storage_provider }}"
+        USE_LOCAL_NAMESPACE_STORAGE = "true"
+        ORCHESTRATOR_BASE_PATH      = "{{ e2b_orchestrator_path }}"
+        SANDBOX_DIR                 = "{{ e2b_fc_vm_dir }}"
+        HOST_KERNELS_DIR            = "{{ e2b_kernels_dir }}"
+        FIRECRACKER_VERSIONS_DIR    = "{{ e2b_firecracker_dir }}"
+        HOST_ENVD_PATH              = "{{ e2b_envd_path }}"
+        GRPC_PORT                   = "{{ orchestrator_grpc_port }}"
+        PROXY_PORT                  = "{{ orchestrator_proxy_port }}"
+        {% if clickhouse_enabled %}
+        CLICKHOUSE_CONNECTION_STRING = "clickhouse://{{ clickhouse_user }}:{{ clickhouse_password }}@{{ hostvars[groups['clickhouse'][0]]['ansible_host'] }}:{{ clickhouse_port }}/{{ clickhouse_database }}"
+        {% endif %}
+        {% if loki_enabled %}
+        LOKI_URL                    = "http://{{ hostvars[groups['loki'][0]]['ansible_host'] }}:{{ loki_port }}"
+        {% endif %}
+      }
+
+      resources {
+        cpu    = 4000
+        memory = 8192
+      }
+    }
+  }
+}

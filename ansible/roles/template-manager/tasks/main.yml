@@ -1,0 +1,31 @@
+---
+# Template Manager 部署
+# 说明: 使用与 Orchestrator 相同的二进制文件，通过环境变量区分角色
+
+- name: 确保 Orchestrator 二进制已部署
+  stat:
+    path: /usr/local/bin/orchestrator
+  register: orchestrator_binary
+
+- name: 复制 Orchestrator 二进制文件 (如未部署)
+  copy:
+    src: ../../packages/orchestrator/bin/orchestrator
+    dest: /usr/local/bin/orchestrator
+    owner: e2b
+    group: e2b
+    mode: '0755'
+  when: not orchestrator_binary.stat.exists
+
+- name: 创建 Template Manager Nomad 任务文件
+  template:
+    src: template-manager.nomad.j2
+    dest: /tmp/e2b-template-manager.nomad
+    mode: '0640'
+  delegate_to: "{{ groups['nomad_server'][0] }}"
+  run_once: true
+
+- name: 提交 Template Manager Nomad 任务
+  shell: |
+    nomad job run -token={{ hostvars[groups['nomad_server'][0]]['nomad_acl_token'] }} /tmp/e2b-template-manager.nomad
+  delegate_to: "{{ groups['nomad_server'][0] }}"
+  run_once: true

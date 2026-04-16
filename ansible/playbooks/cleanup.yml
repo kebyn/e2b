@@ -1,0 +1,57 @@
+---
+# 清理 Playbook (谨慎使用)
+
+- name: 清理 E2B 部署
+  hosts: e2b
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: 停止 API 服务
+      systemd:
+        name: e2b-api
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'api' in group_names"
+
+    - name: 停止 Client Proxy 服务
+      systemd:
+        name: e2b-client-proxy
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'client_proxy' in group_names"
+
+    - name: 停止 Nomad
+      systemd:
+        name: nomad
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'nomad_server' in group_names or 'nomad_client' in group_names"
+
+    - name: 停止 Redis
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'redis' in group_names"
+      loop:
+        - redis-server
+        - redis-sentinel
+
+    - name: 停止 PostgreSQL
+      systemd:
+        name: postgresql
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'postgresql' in group_names"
+
+    - name: 清理 E2B 目录
+      file:
+        path: "{{ e2b_base_dir }}"
+        state: absent
+      ignore_errors: yes

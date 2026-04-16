@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: daytona-redis-master
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-redis
+spec:
+  # This service is a fallback if you use raw manifests instead of Helm.
+  # The Bitnami chart creates its own services.
+  # This maps to the Helm-created master service name.
+  type: ExternalName
+  externalName: daytona-redis-master.daytona.svc.cluster.local

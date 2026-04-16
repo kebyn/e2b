@@ -1,0 +1,16 @@
+# PostgreSQL Client Authentication Configuration
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# 本地连接
+local   all             postgres                                peer
+local   all             all                                     md5
+
+# IPv4 本地连接
+host    all             all             127.0.0.1/32            md5
+
+# IPv4 局域网连接
+host    all             all             10.0.0.0/8              md5
+
+# 复制连接
+host    replication     replicator       10.0.0.0/8             md5

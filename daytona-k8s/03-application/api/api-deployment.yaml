@@ -1,0 +1,462 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: daytona-api
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-api
+    app.kubernetes.io/part-of: daytona
+    app.kubernetes.io/component: control-plane
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daytona-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: daytona-api
+        app.kubernetes.io/component: control-plane
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/api/health"
+    spec:
+      serviceAccountName: daytona-api
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: api
+        image: daytonaio/daytona-api:0.157.0
+        imagePullPolicy: IfNotPresent
+        env:
+        # ===== Core =====
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: ENVIRONMENT
+          value: "kubernetes"
+        - name: RUN_MIGRATIONS
+          value: "true"
+        - name: SKIP_USER_EMAIL_VERIFICATION
+          value: "false"
+        - name: MAINTENANCE_MODE
+          value: "false"
+
+        # ===== Database =====
+        - name: DB_HOST
+          value: "daytona-postgres-rw"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: daytona-db
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: daytona-db
+              key: password
+        - name: DB_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: daytona-db
+              key: database
+        - name: DB_TLS_ENABLED
+          value: "true"
+        - name: DB_TLS_REJECT_UNAUTHORIZED
+          value: "false"
+        - name: DB_POOL_MAX
+          value: "30"
+        - name: DB_POOL_MIN
+          value: "5"
+        - name: DB_POOL_IDLE_TIMEOUT_MS
+          value: "30000"
+
+        # ===== Redis =====
+        - name: REDIS_HOST
+          value: "daytona-redis-master"
+        - name: REDIS_PORT
+          value: "6379"
+
+        # ===== Encryption =====
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: encryption-key
+        - name: ENCRYPTION_SALT
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: encryption-salt
+
+        # ===== OIDC (Keycloak) =====
+        - name: OIDC_CLIENT_ID
+          value: "daytona"
+        - name: OIDC_ISSUER_BASE_URL
+          value: "https://keycloak.${DOMAIN:-sandbox.company.com}/realms/daytona"
+        - name: PUBLIC_OIDC_DOMAIN
+          value: "https://keycloak.${DOMAIN:-sandbox.company.com}/realms/daytona"
+        - name: OIDC_AUDIENCE
+          value: "daytona"
+        - name: OIDC_MANAGEMENT_API_ENABLED
+          value: "false"
+
+        # ===== Dashboard =====
+        - name: DASHBOARD_URL
+          value: "https://api.${DOMAIN:-sandbox.company.com}/dashboard"
+        - name: DASHBOARD_BASE_API_URL
+          value: "https://api.${DOMAIN:-sandbox.company.com}"
+
+        # ===== Proxy =====
+        - name: PROXY_DOMAIN
+          value: "proxy.${DOMAIN:-sandbox.company.com}"
+        - name: PROXY_PROTOCOL
+          value: "https"
+        - name: PROXY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: proxy-api-key
+        - name: PROXY_TEMPLATE_URL
+          value: "https://{{PORT}}-{{sandboxId}}.proxy.${DOMAIN:-sandbox.company.com}"
+
+        # ===== Runner =====
+        - name: DEFAULT_RUNNER_DOMAIN
+          value: "daytona-runner-0.daytona-runner:3003"
+        - name: DEFAULT_RUNNER_API_URL
+          value: "http://daytona-runner-0.daytona-runner:3003"
+        - name: DEFAULT_RUNNER_PROXY_URL
+          value: "http://daytona-runner-0.daytona-runner:3003"
+        - name: DEFAULT_RUNNER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: runner-token
+        - name: DEFAULT_RUNNER_CPU
+          value: "4"
+        - name: DEFAULT_RUNNER_MEMORY
+          value: "8"
+        - name: DEFAULT_RUNNER_DISK
+          value: "50"
+        - name: DEFAULT_RUNNER_NAME
+          value: "default"
+        - name: DEFAULT_RUNNER_API_VERSION
+          value: "2"
+
+        # ===== Region =====
+        - name: DEFAULT_REGION_ID
+          value: "k8s-default"
+        - name: DEFAULT_REGION_NAME
+          value: "Kubernetes Default"
+        - name: DEFAULT_REGION_ENFORCE_QUOTAS
+          value: "true"
+
+        # ===== Quotas =====
+        - name: DEFAULT_ORG_QUOTA_TOTAL_CPU_QUOTA
+          value: "10000"
+        - name: DEFAULT_ORG_QUOTA_TOTAL_MEMORY_QUOTA
+          value: "10000"
+        - name: DEFAULT_ORG_QUOTA_TOTAL_DISK_QUOTA
+          value: "100000"
+        - name: DEFAULT_ORG_QUOTA_MAX_CPU_PER_SANDBOX
+          value: "16"
+        - name: DEFAULT_ORG_QUOTA_MAX_MEMORY_PER_SANDBOX
+          value: "32"
+        - name: DEFAULT_ORG_QUOTA_MAX_DISK_PER_SANDBOX
+          value: "200"
+        - name: DEFAULT_ORG_QUOTA_SNAPSHOT_QUOTA
+          value: "100"
+        - name: DEFAULT_ORG_QUOTA_MAX_SNAPSHOT_SIZE
+          value: "50"
+        - name: DEFAULT_ORG_QUOTA_VOLUME_QUOTA
+          value: "1000"
+
+        # ===== SSH Gateway =====
+        - name: SSH_GATEWAY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: ssh-gateway-api-key
+        - name: SSH_GATEWAY_COMMAND
+          value: "ssh -p 2222 {{TOKEN}}@ssh.${DOMAIN:-sandbox.company.com}"
+        - name: SSH_GATEWAY_URL
+          value: "ssh.${DOMAIN:-sandbox.company.com}:2222"
+        - name: SSH_GATEWAY_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: ssh-host-key
+
+        # ===== Registry =====
+        - name: INTERNAL_REGISTRY_URL
+          valueFrom:
+            secretKeyRef:
+              name: daytona-registry
+              key: url
+        - name: INTERNAL_REGISTRY_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: daytona-registry
+              key: admin
+        - name: INTERNAL_REGISTRY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: daytona-registry
+              key: password
+        - name: INTERNAL_REGISTRY_PROJECT_ID
+          value: "daytona"
+        - name: TRANSIENT_REGISTRY_URL
+          valueFrom:
+            secretKeyRef:
+              name: daytona-registry
+              key: url
+        - name: TRANSIENT_REGISTRY_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: daytona-registry
+              key: admin
+        - name: TRANSIENT_REGISTRY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: daytona-registry
+              key: password
+        - name: TRANSIENT_REGISTRY_PROJECT_ID
+          value: "daytona"
+
+        # ===== S3 / Object Storage =====
+        - name: S3_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: endpoint
+        - name: S3_STS_ENDPOINT
+          value: "http://daytona-minio:9000/minio/v1/assume-role"
+        - name: S3_REGION
+          value: "us-east-1"
+        - name: S3_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: access-key
+        - name: S3_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: secret-key
+        - name: S3_DEFAULT_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: bucket
+        - name: S3_ACCOUNT_ID
+          value: "/"
+        - name: S3_ROLE_NAME
+          value: "/"
+
+        # ===== SMTP =====
+        - name: SMTP_HOST
+          value: "smtp-relay"
+        - name: SMTP_PORT
+          value: "587"
+        - name: SMTP_SECURE
+          value: "true"
+        - name: SMTP_EMAIL_FROM
+          value: "Daytona <no-reply@company.com>"
+
+        # ===== Default Snapshot =====
+        - name: DEFAULT_SNAPSHOT
+          value: "daytonaio/sandbox:0.6.0-slim"
+
+        # ===== Rate Limiting =====
+        - name: RATE_LIMIT_AUTHENTICATED_TTL
+          value: "60"
+        - name: RATE_LIMIT_AUTHENTICATED_LIMIT
+          value: "200"
+        - name: RATE_LIMIT_SANDBOX_CREATE_TTL
+          value: "60"
+        - name: RATE_LIMIT_SANDBOX_CREATE_LIMIT
+          value: "30"
+        - name: RATE_LIMIT_SANDBOX_LIFECYCLE_TTL
+          value: "60"
+        - name: RATE_LIMIT_SANDBOX_LIFECYCLE_LIMIT
+          value: "60"
+        - name: RATE_LIMIT_FAILED_AUTH_TTL
+          value: "300"
+        - name: RATE_LIMIT_FAILED_AUTH_LIMIT
+          value: "5"
+
+        # ===== Monitoring =====
+        - name: OTEL_ENABLED
+          value: "true"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://daytona-otel-collector:4318"
+        - name: OTEL_COLLECTOR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: otel-collector-key
+
+        # ===== Health =====
+        - name: HEALTH_CHECK_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: health-check-key
+
+        # ===== Admin (first-run only) =====
+        - name: ADMIN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: admin-api-key
+        - name: ADMIN_TOTAL_CPU_QUOTA
+          value: "1000"
+        - name: ADMIN_TOTAL_MEMORY_QUOTA
+          value: "1000"
+        - name: ADMIN_TOTAL_DISK_QUOTA
+          value: "10000"
+        - name: ADMIN_MAX_CPU_PER_SANDBOX
+          value: "16"
+        - name: ADMIN_MAX_MEMORY_PER_SANDBOX
+          value: "32"
+        - name: ADMIN_SNAPSHOT_QUOTA
+          value: "100"
+
+        # ===== Analytics =====
+        - name: POSTHOG_DISABLED
+          value: "true"
+
+        # ===== Sandbox Lifecycle =====
+        - name: MAX_AUTO_ARCHIVE_INTERVAL
+          value: "43200"
+
+        # ===== Runner Scoring =====
+        - name: RUNNER_DECLARATIVE_BUILD_SCORE_THRESHOLD
+          value: "10"
+        - name: RUNNER_AVAILABILITY_SCORE_THRESHOLD
+          value: "10"
+        - name: RUNNER_START_SCORE_THRESHOLD
+          value: "3"
+
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+
+        livenessProbe:
+          httpGet:
+            path: /api/config
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 60
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 1Gi
+
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: daytona-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: daytona-api
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-api
+spec:
+  selector:
+    app.kubernetes.io/name: daytona-api
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: daytona-api
+  namespace: daytona
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daytona-api
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: daytona-api
+  namespace: daytona
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: daytona-api
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

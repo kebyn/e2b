@@ -1,0 +1,17 @@
+# Redis Sentinel 配置
+
+port {{ redis_sentinel_port }}
+daemonize no
+supervised systemd
+
+sentinel monitor mymaster {{ hostvars[groups['redis'] | selectattr('redis_role', 'equalto', 'master') | first]['ansible_host'] }} {{ redis_port }} 2
+sentinel down-after-milliseconds mymaster 5000
+sentinel parallel-syncs mymaster 1
+sentinel failover-timeout mymaster 10000
+
+{% if redis_requirepass %}
+sentinel auth-pass mymaster {{ redis_requirepass }}
+{% endif %}
+
+# 日志
+logfile /var/log/redis/redis-sentinel.log

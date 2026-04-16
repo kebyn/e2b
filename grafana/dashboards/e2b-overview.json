@@ -1,0 +1,1064 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus"
+    }
+  ],
+  "id": null,
+  "uid": "e2b-overview",
+  "title": "E2B Platform Overview",
+  "description": "E2B 平台核心监控面板",
+  "tags": ["e2b", "platform"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false
+      },
+      {
+        "name": "node",
+        "type": "query",
+        "datasource": { "uid": "${datasource}" },
+        "query": "label_values(up{job=~\"e2b-.*\"}, instance)",
+        "current": {},
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "options": [],
+        "refresh": 2,
+        "regex": "",
+        "sort": 1
+      },
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": { "uid": "${datasource}" },
+        "query": "label_values(up{job=~\"e2b-.*\"}, job)",
+        "current": {},
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "options": [],
+        "refresh": 2,
+        "regex": "",
+        "sort": 1
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Deployments",
+        "datasource": { "uid": "${datasource}" },
+        "enable": true,
+        "expr": "changes(process_start_time_seconds{job=~\"e2b-.*\"}[1m]) > 0",
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "titleFormat": "Service Restart: {{instance}}",
+        "type": "tags"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "平台概览",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 10,
+      "title": "运行中 Sandbox",
+      "type": "stat",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(e2b_sandbox_running_count)",
+          "legendFormat": "Running"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 150 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 11,
+      "title": "API 请求/秒",
+      "type": "stat",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"e2b-api\"}[5m]))",
+          "legendFormat": "RPS"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 500 }
+            ]
+          },
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 12,
+      "title": "错误率",
+      "type": "stat",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"e2b-api\", status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"e2b-api\"}[5m])) * 100",
+          "legendFormat": "Error %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "percent",
+          "decimals": 2
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 13,
+      "title": "P99 延迟",
+      "type": "stat",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"e2b-api\"}[5m])) by (le))",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "s",
+          "decimals": 3
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 14,
+      "title": "Nomad 节点数",
+      "type": "stat",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "expr": "nomad_client_allocated_cpu{job=\"nomad\"} > 0",
+          "legendFormat": "Nodes"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "green", "value": 3 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["count"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 15,
+      "title": "数据库连接",
+      "type": "stat",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        {
+          "expr": "pg_stat_activity_count{job=\"e2b-postgresql\", state=\"active\"}",
+          "legendFormat": "Active"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 150 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 2,
+      "title": "API 服务",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+    {
+      "id": 20,
+      "title": "API 请求速率",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"e2b-api\"}[5m])) by (method, status_code)",
+          "legendFormat": "{{method}} {{status_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 21,
+      "title": "API 延迟分布",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"e2b-api\"}[5m])) by (le))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"e2b-api\"}[5m])) by (le))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"e2b-api\"}[5m])) by (le))",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": false
+          },
+          "unit": "s"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 22,
+      "title": "API 端点错误率",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"e2b-api\", status_code=~\"4..\"}[5m])) by (handler) / sum(rate(http_requests_total{job=\"e2b-api\"}[5m])) by (handler) * 100",
+          "legendFormat": "4xx {{handler}}"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{job=\"e2b-api\", status_code=~\"5..\"}[5m])) by (handler) / sum(rate(http_requests_total{job=\"e2b-api\"}[5m])) by (handler) * 100",
+          "legendFormat": "5xx {{handler}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "percent",
+          "decimals": 2
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Sandbox 管理",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false
+    },
+    {
+      "id": 30,
+      "title": "Sandbox 创建/销毁速率",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "expr": "sum(rate(e2b_sandbox_created_total[5m]))",
+          "legendFormat": "Created"
+        },
+        {
+          "expr": "sum(rate(e2b_sandbox_destroyed_total[5m]))",
+          "legendFormat": "Destroyed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "ops"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 31,
+      "title": "Sandbox 生命周期",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(e2b_sandbox_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(e2b_sandbox_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(e2b_sandbox_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": false
+          },
+          "unit": "s"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 32,
+      "title": "Sandbox 按团队分布",
+      "type": "piechart",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
+      "targets": [
+        {
+          "expr": "sum(e2b_sandbox_running_count) by (team_id)",
+          "legendFormat": "Team {{team_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right" },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 33,
+      "title": "Sandbox 按模板分布",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "targets": [
+        {
+          "expr": "sum(e2b_sandbox_running_count) by (template_id)",
+          "legendFormat": "{{template_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "spanNulls": false,
+            "stacking": { "mode": "normal" }
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 34,
+      "title": "Sandbox 创建延迟",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(e2b_sandbox_create_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(e2b_sandbox_create_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(e2b_sandbox_create_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": false
+          },
+          "unit": "s"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Orchestrator 资源",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false
+    },
+    {
+      "id": 40,
+      "title": "CPU 使用率",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\", instance=~\"$node\"}[5m])) by (instance) * 100)",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 41,
+      "title": "内存使用率",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 32 },
+      "targets": [
+        {
+          "expr": "(1 - node_memory_MemAvailable_bytes{instance=~\"$node\"} / node_memory_MemTotal_bytes{instance=~\"$node\"}) * 100",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 42,
+      "title": "磁盘使用率",
+      "type": "gauge",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 32 },
+      "targets": [
+        {
+          "expr": "(1 - node_filesystem_avail_bytes{instance=~\"$node\", mountpoint=\"/\"} / node_filesystem_size_bytes{instance=~\"$node\", mountpoint=\"/\"}) * 100",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "id": 43,
+      "title": "网络 I/O",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        {
+          "expr": "sum(rate(node_network_receive_bytes_total{instance=~\"$node\", device!~\"lo|veth.*|docker.*|br.*\"}[5m])) by (instance)",
+          "legendFormat": "RX {{instance}}"
+        },
+        {
+          "expr": "sum(rate(node_network_transmit_bytes_total{instance=~\"$node\", device!~\"lo|veth.*|docker.*|br.*\"}[5m])) by (instance)",
+          "legendFormat": "TX {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 44,
+      "title": "磁盘 I/O",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        {
+          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$node\", device!~\"loop.*\"}[5m])) by (instance)",
+          "legendFormat": "Read {{instance}}"
+        },
+        {
+          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$node\", device!~\"loop.*\"}[5m])) by (instance)",
+          "legendFormat": "Write {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "数据库",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 48 },
+      "collapsed": false
+    },
+    {
+      "id": 50,
+      "title": "PostgreSQL 连接数",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 49 },
+      "targets": [
+        {
+          "expr": "pg_stat_activity_count{job=\"e2b-postgresql\"}",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false,
+            "stacking": { "mode": "normal" }
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 51,
+      "title": "PostgreSQL 查询性能",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 49 },
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_tup_fetched{datname=\"e2b\"}[5m])",
+          "legendFormat": "Rows Fetched/s"
+        },
+        {
+          "expr": "rate(pg_stat_database_tup_inserted{datname=\"e2b\"}[5m])",
+          "legendFormat": "Rows Inserted/s"
+        },
+        {
+          "expr": "rate(pg_stat_database_tup_updated{datname=\"e2b\"}[5m])",
+          "legendFormat": "Rows Updated/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "ops"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 52,
+      "title": "PostgreSQL 复制延迟",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 49 },
+      "targets": [
+        {
+          "expr": "pg_replication_lag_seconds{job=\"e2b-postgresql\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": false
+          },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 53,
+      "title": "Redis 内存使用",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 57 },
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes{job=\"e2b-redis\"}",
+          "legendFormat": "Used {{instance}}"
+        },
+        {
+          "expr": "redis_memory_max_bytes{job=\"e2b-redis\"}",
+          "legendFormat": "Max {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "bytes"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 54,
+      "title": "Redis 命中率",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 57 },
+      "targets": [
+        {
+          "expr": "rate(redis_keyspace_hits_total{job=\"e2b-redis\"}[5m]) / (rate(redis_keyspace_hits_total{job=\"e2b-redis\"}[5m]) + rate(redis_keyspace_misses_total{job=\"e2b-redis\"}[5m])) * 100",
+          "legendFormat": "Hit Rate {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 55,
+      "title": "Redis 连接数",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 57 },
+      "targets": [
+        {
+          "expr": "redis_connected_clients{job=\"e2b-redis\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Nomad 集群",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 65 },
+      "collapsed": false
+    },
+    {
+      "id": 60,
+      "title": "Nomad 任务状态",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 66 },
+      "targets": [
+        {
+          "expr": "nomad_client_allocs_running",
+          "legendFormat": "Running"
+        },
+        {
+          "expr": "nomad_client_allocs_pending",
+          "legendFormat": "Pending"
+        },
+        {
+          "expr": "nomad_client_allocs_failed",
+          "legendFormat": "Failed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 61,
+      "title": "Nomad CPU 分配",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 66 },
+      "targets": [
+        {
+          "expr": "nomad_client_allocated_cpu",
+          "legendFormat": "Allocated"
+        },
+        {
+          "expr": "nomad_client_unallocated_cpu",
+          "legendFormat": "Unallocated"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false,
+            "stacking": { "mode": "normal" }
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 62,
+      "title": "Nomad 内存分配",
+      "type": "timeseries",
+      "datasource": { "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 66 },
+      "targets": [
+        {
+          "expr": "nomad_client_allocated_memory",
+          "legendFormat": "Allocated"
+        },
+        {
+          "expr": "nomad_client_unallocated_memory",
+          "legendFormat": "Unallocated"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "spanNulls": false,
+            "stacking": { "mode": "normal" }
+          },
+          "unit": "bytes"
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "links": [
+    {
+      "title": "E2B Docs",
+      "url": "https://e2b.dev/docs",
+      "icon": "doc",
+      "type": "link",
+      "targetBlank": true
+    }
+  ]
+}

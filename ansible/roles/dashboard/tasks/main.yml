@@ -1,0 +1,64 @@
+---
+# Dashboard Frontend 部署
+# 说明: 基于 Next.js，需要从 GitHub 克隆构建或使用 Docker
+
+- name: 安装 Node.js
+  apt:
+    name:
+      - nodejs
+      - npm
+    state: present
+    update_cache: yes
+  when: dashboard_install_method == 'source'
+
+- name: 克隆 Dashboard 仓库
+  git:
+    repo: https://github.com/e2b-dev/dashboard.git
+    dest: /opt/e2b/dashboard
+    version: main
+  when: dashboard_install_method == 'source'
+
+- name: 配置 Dashboard 环境变量
+  template:
+    src: dashboard.env.j2
+    dest: /opt/e2b/dashboard/.env.production
+    owner: e2b
+    group: e2b
+    mode: '0640'
+  when: dashboard_install_method == 'source'
+  notify: restart dashboard
+
+- name: 安装依赖
+  npm:
+    path: /opt/e2b/dashboard
+    state: present
+  when: dashboard_install_method == 'source'
+
+- name: 构建 Dashboard
+  command: npm run build
+  args:
+    chdir: /opt/e2b/dashboard
+  when: dashboard_install_method == 'source'
+
+- name: 创建 Dashboard Systemd 服务
+  template:
+    src: e2b-dashboard.service.j2
+    dest: /etc/systemd/system/e2b-dashboard.service
+    mode: '0644'
+  notify: restart dashboard
+
+- name: 重新加载 Systemd
+  systemd:
+    daemon_reload: yes
+
+- name: 启动 Dashboard
+  systemd:
+    name: e2b-dashboard
+    state: started
+    enabled: yes
+
+- name: 等待 Dashboard 就绪
+  wait_for:
+    port: "{{ dashboard_port }}"
+    delay: 10
+    timeout: 60

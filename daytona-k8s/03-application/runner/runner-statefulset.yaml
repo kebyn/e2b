@@ -1,0 +1,295 @@
+# Runner Headless Service for per-pod DNS resolution
+apiVersion: v1
+kind: Service
+metadata:
+  name: daytona-runner
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-runner
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: daytona-runner
+  ports:
+  - name: api
+    port: 3003
+    targetPort: 3003
+  - name: ssh
+    port: 2220
+    targetPort: 2220
+---
+# Runner StatefulSet
+# Each runner pod hosts sandbox containers via DinD or host Docker socket.
+# Pod names: daytona-runner-0, daytona-runner-1, ...
+# DNS: daytona-runner-0.daytona-runner.daytona.svc.cluster.local
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: daytona-runner
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-runner
+    app.kubernetes.io/part-of: daytona
+    app.kubernetes.io/component: compute
+spec:
+  serviceName: daytona-runner
+  replicas: 2  # Scale as needed
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daytona-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: daytona-runner
+        app.kubernetes.io/component: compute
+    spec:
+      serviceAccountName: daytona-runner
+      terminationGracePeriodSeconds: 120
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+
+      # Init container: ensure sandbox network exists
+      initContainers:
+      - name: setup-network
+        image: docker:28.2.2-dind-alpine3.22
+        command:
+        - sh
+        - -c
+        - |
+          # Wait for dockerd to be ready from previous run
+          until docker network ls > /dev/null 2>&1; do
+            echo "Waiting for Docker..."
+            sleep 2
+          done
+          # Create sandbox bridge network if not exists
+          docker network create \
+            --driver bridge \
+            --opt com.docker.network.bridge.enable_icc=false \
+            --subnet 172.20.0.0/16 \
+            runner-bridge 2>/dev/null || true
+          echo "Network setup complete"
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+
+      containers:
+      - name: runner
+        image: daytonaio/daytona-runner:0.157.0
+        imagePullPolicy: IfNotPresent
+        env:
+        # ===== Core =====
+        - name: ENVIRONMENT
+          value: "production"
+        - name: API_PORT
+          value: "3003"
+        - name: DAYTONA_API_URL
+          value: "http://daytona-api:3000/api"
+        - name: DAYTONA_RUNNER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: runner-token
+
+        # ===== Runner Identity (per-pod) =====
+        - name: RUNNER_DOMAIN
+          value: "daytona-runner-$(HOSTNAME).daytona-runner:3003"
+
+        # ===== Resource Limits =====
+        - name: RESOURCE_LIMITS_DISABLED
+          value: "false"
+
+        # ===== Network Isolation =====
+        - name: INTER_SANDBOX_NETWORK_ENABLED
+          value: "false"
+        - name: CONTAINER_NETWORK
+          value: "runner-bridge"
+
+        # ===== S3 (for volume backups) =====
+        - name: AWS_ENDPOINT_URL
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: endpoint
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: secret-key
+        - name: AWS_DEFAULT_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: daytona-s3
+              key: bucket
+
+        # ===== Sandbox Config =====
+        - name: USE_SNAPSHOT_ENTRYPOINT
+          value: "false"
+        - name: DAEMON_START_TIMEOUT_SEC
+          value: "60"
+        - name: SANDBOX_START_TIMEOUT_SEC
+          value: "30"
+
+        # ===== Timeouts & Polling =====
+        - name: VOLUME_CLEANUP_INTERVAL
+          value: "30s"
+        - name: POLL_TIMEOUT
+          value: "30s"
+        - name: POLL_LIMIT
+          value: "10"
+        - name: HEALTHCHECK_INTERVAL
+          value: "30s"
+        - name: HEALTHCHECK_TIMEOUT
+          value: "10s"
+        - name: API_VERSION
+          value: "2"
+
+        # ===== SSH =====
+        - name: SSH_GATEWAY_ENABLE
+          value: "true"
+        - name: SSH_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: ssh-host-key
+
+        # ===== Metrics =====
+        - name: COLLECTOR_WINDOW_SIZE
+          value: "60"
+        - name: CPU_USAGE_SNAPSHOT_INTERVAL
+          value: "5s"
+        - name: ALLOCATED_RESOURCES_SNAPSHOT_INTERVAL
+          value: "5s"
+
+        # ===== Logging =====
+        - name: LOG_FILE_PATH
+          value: "/var/log/daytona/runner.log"
+
+        ports:
+        - containerPort: 3003
+          name: api
+          protocol: TCP
+        - containerPort: 2220
+          name: ssh
+          protocol: TCP
+
+        securityContext:
+          privileged: true
+
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3003
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3003
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 3003
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 60
+
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: sandbox-data
+          mountPath: /data
+        - name: var-log
+          mountPath: /var/log/daytona
+        - name: tmp
+          mountPath: /tmp
+        # XFS-backed path for disk quotas (if available)
+        - name: xfs-data
+          mountPath: /var/lib/docker
+
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
+      - name: var-log
+        emptyDir:
+          sizeLimit: 500Mi
+      - name: tmp
+        emptyDir:
+          sizeLimit: 1Gi
+
+      # Schedule only on designated runner nodes
+      nodeSelector:
+        node-role: daytona-runner
+
+      tolerations:
+      - key: "dedicated"
+        operator: "Equal"
+        value: "daytona-runner"
+        effect: "NoSchedule"
+      - key: "CriticalAddonsOnly"
+        operator: "Exists"
+
+      # Spread runners across nodes
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: daytona-runner
+
+  # Persistent storage for sandbox data
+  volumeClaimTemplates:
+  - metadata:
+      name: sandbox-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 200Gi
+      storageClassName: ""  # Set to your StorageClass
+  - metadata:
+      name: xfs-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 500Gi
+      storageClassName: ""  # Use XFS-backed StorageClass for disk quotas
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: daytona-runner
+  namespace: daytona
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daytona-runner

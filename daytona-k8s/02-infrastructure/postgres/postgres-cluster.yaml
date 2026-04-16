@@ -1,0 +1,99 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: daytona-postgres
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-postgres
+    app.kubernetes.io/part-of: daytona
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.5
+
+  bootstrap:
+    initdb:
+      database: daytona
+      owner: daytona
+      secret:
+        name: daytona-db
+      # Post-init SQL for extensions
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
+        - CREATE EXTENSION IF NOT EXISTS "pg_trgm"
+
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+
+  storage:
+    size: 50Gi
+    storageClass: ""  # Set to your StorageClass (e.g., gp3, longhorn, local-path)
+
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+
+  monitoring:
+    enablePodMonitor: true
+
+  # Connection pooling with PgBouncer
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "2GB"
+      effective_cache_size: "6GB"
+      maintenance_work_mem: "512MB"
+      work_mem: "16MB"
+      wal_buffers: "64MB"
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+      min_wal_size: "1GB"
+      max_wal_size: "4GB"
+      max_worker_processes: "4"
+      max_parallel_workers_per_gather: "2"
+      max_parallel_workers: "4"
+      ssl: "on"
+    pg_hba:
+      - host all all 0.0.0.0/0 md5
+      - hostssl all all 0.0.0.0/0 md5
+
+  # Automated backup (configure if using external S3)
+  # backup:
+  #   barmanObjectStore:
+  #     destinationPath: "s3://daytona-pg-backups"
+  #     endpointURL: "http://daytona-minio:9000"
+  #     s3Credentials:
+  #       accessKeyId:
+  #         name: daytona-s3
+  #         key: access-key
+  #       secretAccessKey:
+  #         name: daytona-s3
+  #         key: secret-key
+  #   retentionPolicy: "30d"
+  # scheduledBackup:
+  #   schedule: "0 2 * * *"
+  #   backupOwner: self
+---
+# PgBouncer connection pooler
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: daytona-pgbouncer
+  namespace: daytona
+spec:
+  cluster:
+    name: daytona-postgres
+  instances: 2
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "50"
+      min_pool_size: "10"
+      reserve_pool_size: "10"
+      reserve_pool_timeout: "5"

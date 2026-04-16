@@ -1,0 +1,50 @@
+---
+# Client Proxy 部署
+
+- name: 复制 Client Proxy 二进制文件
+  copy:
+    src: ../../packages/client-proxy/bin/client-proxy
+    dest: /usr/local/bin/client-proxy
+    owner: e2b
+    group: e2b
+    mode: '0755'
+
+- name: 创建配置目录
+  file:
+    path: /etc/e2b
+    state: directory
+    owner: e2b
+    group: e2b
+    mode: '0750'
+
+- name: 配置 Client Proxy 环境变量
+  template:
+    src: client-proxy.env.j2
+    dest: /etc/e2b/client-proxy.env
+    owner: e2b
+    group: e2b
+    mode: '0640'
+  notify: restart client-proxy
+
+- name: 创建 Client Proxy Systemd 服务
+  template:
+    src: e2b-client-proxy.service.j2
+    dest: /etc/systemd/system/e2b-client-proxy.service
+    mode: '0644'
+  notify: restart client-proxy
+
+- name: 重新加载 Systemd
+  systemd:
+    daemon_reload: yes
+
+- name: 启动 Client Proxy
+  systemd:
+    name: e2b-client-proxy
+    state: started
+    enabled: yes
+
+- name: 等待 Client Proxy 就绪
+  wait_for:
+    port: "{{ proxy_health_port }}"
+    delay: 5
+    timeout: 60

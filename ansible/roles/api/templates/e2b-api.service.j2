@@ -1,0 +1,22 @@
+[Unit]
+Description=E2B API Service
+Documentation=https://e2b.dev/docs
+After=network.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=e2b
+Group=e2b
+EnvironmentFile=/etc/e2b/api.env
+ExecStart=/usr/local/bin/api --port {{ api_port }}
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+
+# 资源限制
+CPUQuota={{ api_cpu_limit | default('200%') }}
+MemoryMax={{ api_memory_limit | default('2G') }}
+
+[Install]
+WantedBy=multi-user.target

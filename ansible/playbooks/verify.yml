@@ -1,0 +1,61 @@
+---
+# 健康检查 Playbook
+
+- name: 验证 E2B 部署
+  hosts: e2b
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: 检查 PostgreSQL 连接
+      shell: psql -h localhost -U {{ postgres_user }} -d {{ postgres_database }} -c "SELECT 1;"
+      environment:
+        PGPASSWORD: "{{ postgres_password }}"
+      when: "'postgresql' in group_names"
+      register: pg_check
+      changed_when: false
+
+    - name: 检查 Redis 连接
+      shell: redis-cli -h localhost -p {{ redis_port }} ping
+      when: "'redis' in group_names"
+      register: redis_check
+      changed_when: false
+
+    - name: 检查 Nomad 状态
+      shell: nomad server members -json
+      when: "'nomad_server' in group_names"
+      register: nomad_check
+      changed_when: false
+
+    - name: 检查 API 健康状态
+      uri:
+        url: "http://localhost:{{ api_port }}/health"
+        method: GET
+        status_code: 200
+      when: "'api' in group_names"
+      register: api_check
+
+    - name: 检查 Client Proxy 健康状态
+      uri:
+        url: "http://localhost:{{ proxy_health_port }}/"
+        method: GET
+        status_code: 200
+      when: "'client_proxy' in group_names"
+      register: proxy_check
+
+    - name: 检查 Orchestrator Nomad 任务
+      shell: nomad status e2b-orchestrator -json
+      delegate_to: "{{ groups['nomad_server'][0] }}"
+      run_once: true
+      register: orchestrator_check
+      changed_when: false
+
+    - name: 显示检查结果
+      debug:
+        msg: |
+          PostgreSQL: {{ 'OK' if pg_check is defined and pg_check.rc == 0 else 'FAIL' if pg_check is defined else 'SKIP' }}
+          Redis: {{ 'OK' if redis_check is defined and redis_check.stdout == 'PONG' else 'FAIL' if redis_check is defined else 'SKIP' }}
+          Nomad: {{ 'OK' if nomad_check is defined and nomad_check.rc == 0 else 'FAIL' if nomad_check is defined else 'SKIP' }}
+          API: {{ 'OK' if api_check is defined else 'SKIP' }}
+          Client Proxy: {{ 'OK' if proxy_check is defined else 'SKIP' }}
+          Orchestrator: {{ 'OK' if orchestrator_check is defined else 'SKIP' }}

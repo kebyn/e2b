@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: daytona-ssh-gateway
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-ssh-gateway
+    app.kubernetes.io/part-of: daytona
+    app.kubernetes.io/component: ssh
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daytona-ssh-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: daytona-ssh-gateway
+        app.kubernetes.io/component: ssh
+    spec:
+      serviceAccountName: daytona-ssh-gateway
+      containers:
+      - name: ssh-gateway
+        image: daytonaio/daytona-ssh-gateway:0.157.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: API_URL
+          value: "http://daytona-api:3000/api"
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: ssh-gateway-api-key
+        - name: SSH_GATEWAY_PORT
+          value: "2222"
+        - name: SSH_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: ssh-private-key
+        - name: SSH_HOST_KEY
+          valueFrom:
+            secretKeyRef:
+              name: daytona-core
+              key: ssh-host-key
+
+        ports:
+        - containerPort: 2222
+          name: ssh
+          protocol: TCP
+
+        resources:
+          requests:
+            cpu: "250m"
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+
+        livenessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+
+        readinessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: daytona-ssh-gateway
+  namespace: daytona
+  labels:
+    app.kubernetes.io/name: daytona-ssh-gateway
+spec:
+  selector:
+    app.kubernetes.io/name: daytona-ssh-gateway
+  ports:
+  - name: ssh
+    port: 2222
+    targetPort: 2222
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: daytona-ssh-gateway
+  namespace: daytona
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daytona-ssh-gateway

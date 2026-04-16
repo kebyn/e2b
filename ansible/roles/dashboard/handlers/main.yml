@@ -1,0 +1,5 @@
+---
+- name: restart dashboard
+  systemd:
+    name: e2b-dashboard
+    state: restarted

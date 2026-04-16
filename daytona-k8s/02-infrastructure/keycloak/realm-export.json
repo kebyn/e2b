@@ -1,0 +1,125 @@
+{
+  "realm": "daytona",
+  "enabled": true,
+  "displayName": "Daytona",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Daytona Administrator"
+      },
+      {
+        "name": "developer",
+        "description": "Daytona Developer"
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only access"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "daytona",
+      "name": "Daytona Platform",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "",
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://*.${DOMAIN}/*",
+        "https://api.${DOMAIN}/*",
+        "http://localhost:3000/*",
+        "http://localhost:4000/*"
+      ],
+      "webOrigins": [
+        "https://*.${DOMAIN}",
+        "https://api.${DOMAIN}",
+        "http://localhost:3000",
+        "http://localhost:4000"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ],
+      "protocolMappers": [
+        {
+          "name": "daytona-org-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "organizationId",
+            "claim.name": "daytona_org_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "daytona-api",
+      "name": "Daytona API (M2M)",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "",
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "defaultClientScopes": [
+        "profile",
+        "email"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@company.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Admin",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "change-me-immediately",
+          "temporary": true
+        }
+      ],
+      "realmRoles": ["admin"]
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+---
+# ============================================================
+# E2B 全局变量
+# ============================================================
+
+# 环境标识
+environment: prod
+
+# 域名配置
+domain_name: e2b.example.com
+api_domain: "api.{{ domain_name }}"
+sandbox_domain: "*.sandbox.{{ domain_name }}"
+
+# ============================================================
+# 数据库配置 (必需)
+# ============================================================
+postgres_version: 17
+postgres_user: e2b
+postgres_password: "CHANGE_ME_POSTGRES_PASSWORD"
+postgres_database: e2b
+postgres_port: 5432
+postgres_max_connections: 200
+postgres_shared_buffers: "4GB"
+postgres_effective_cache_size: "12GB"
+
+# ============================================================
+# Redis 配置 (必需)
+# ============================================================
+redis_version: "7"
+redis_port: 6379
+redis_sentinel_port: 26379
+redis_maxmemory: "2gb"
+redis_requirepass: "CHANGE_ME_REDIS_PASSWORD"
+
+# ============================================================
+# Nomad 配置 (必需)
+# ============================================================
+nomad_version: "1.11.3"
+nomad_datacenter: dc1
+nomad_acl_enabled: true
+
+# ============================================================
+# 应用配置 (必需)
+# ============================================================
+
+# 存储配置
+template_bucket_name: e2b-templates
+build_cache_bucket_name: e2b-build-cache
+storage_provider: GCPBucket
+gcp_project_id: ""
+gcp_region: us-central1
+google_service_account_base64: ""
+
+# 认证配置
+admin_token: "CHANGE_ME_ADMIN_TOKEN"
+
+# Volume Token 配置
+volume_token_issuer: "{{ domain_name }}"
+volume_token_signing_method: ES256
+volume_token_signing_key: "ECDSA:CHANGE_ME_BASE64_PRIVATE_KEY"
+volume_token_signing_key_name: "prod-2024"
+
+# ============================================================
+# Dashboard 配置 (可选)
+# ============================================================
+
+# 是否部署 Dashboard
+dashboard_enabled: false
+dashboard_install_method: source  # source 或 docker
+
+# Dashboard 端口
+dashboard_api_port: 3010
+dashboard_port: 3000
+
+# Supabase 配置 (Dashboard 认证必需)
+supabase_url: ""
+supabase_anon_key: ""
+
+# ============================================================
+# 可选组件配置
+# ============================================================
+
+# ClickHouse (可选)
+clickhouse_enabled: false
+clickhouse_user: clickhouse
+clickhouse_password: clickhouse
+clickhouse_database: default
+clickhouse_port: 9000
+
+# Loki (可选)
+loki_enabled: false
+loki_port: 3100
+
+# LaunchDarkly (可选，不配置即用默认值)
+launchdarkly_api_key: ""
+
+# Supabase (可选，不配置即用 API Key 认证)
+supabase_jwt_secrets: ""
+
+# ============================================================
+# 路径配置
+# ============================================================
+e2b_base_dir: /opt/e2b
+e2b_orchestrator_path: "{{ e2b_base_dir }}/orchestrator"
+e2b_fc_vm_dir: "{{ e2b_base_dir }}/fc-vm"
+e2b_kernels_dir: "{{ e2b_base_dir }}/kernels"
+e2b_firecracker_dir: "{{ e2b_base_dir }}/firecracker"
+e2b_envd_path: "{{ e2b_base_dir }}/envd/envd"
+
+# ============================================================
+# 端口配置
+# ============================================================
+api_port: 3000
+api_grpc_port: 5009
+proxy_port: 3002
+proxy_health_port: 3003
+orchestrator_grpc_port: 5008
+orchestrator_proxy_port: 5007
+
+# ============================================================
+# 资源配置
+# ============================================================
+api_cpu_limit: "2"
+api_memory_limit: "2Gi"
+proxy_cpu_limit: "1"
+proxy_memory_limit: "1Gi"
+orchestrator_cpu_limit: "4"
+orchestrator_memory_limit: "8Gi"

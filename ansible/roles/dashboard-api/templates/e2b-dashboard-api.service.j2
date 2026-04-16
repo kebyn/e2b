@@ -1,0 +1,22 @@
+[Unit]
+Description=E2B Dashboard API Service
+Documentation=https://e2b.dev/docs
+After=network.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=e2b
+Group=e2b
+EnvironmentFile=/etc/e2b/dashboard-api.env
+ExecStart=/usr/local/bin/dashboard-api
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+
+# 资源限制
+CPUQuota={{ dashboard_api_cpu_limit | default('100%') }}
+MemoryMax={{ dashboard_api_memory_limit | default('512M') }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,96 @@
+---
+# Orchestrator 部署
+
+- name: 复制 Orchestrator 二进制文件
+  copy:
+    src: ../../packages/orchestrator/bin/orchestrator
+    dest: /usr/local/bin/orchestrator
+    owner: e2b
+    group: e2b
+    mode: '0755'
+
+- name: 复制 envd 二进制文件
+  copy:
+    src: ../../packages/envd/bin/envd
+    dest: "{{ e2b_envd_path }}"
+    owner: e2b
+    group: e2b
+    mode: '0755'
+
+- name: 加载内核模块
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - nbd
+    - tun
+
+- name: 配置内核模块开机加载
+  copy:
+    content: |
+      nbd nbds_max=256
+      tun
+    dest: /etc/modules-load.d/e2b.conf
+    mode: '0644'
+
+- name: 设置内核参数
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    reload: yes
+  loop:
+    - { key: "vm.nr_hugepages", value: "2048" }
+    - { key: "vm.unprivileged_userfaultfd", value: "1" }
+
+- name: 创建 E2B 目录结构
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: e2b
+    group: e2b
+    mode: '0755'
+  loop:
+    - "{{ e2b_orchestrator_path }}"
+    - "{{ e2b_fc_vm_dir }}"
+    - "{{ e2b_kernels_dir }}"
+    - "{{ e2b_firecracker_dir }}"
+    - "{{ e2b_envd_path | dirname }}"
+
+- name: 下载 Firecracker 内核
+  shell: |
+    cd {{ e2b_kernels_dir }}
+    wget -q https://github.com/e2b-dev/infra/releases/download/kernel/vmlinux-6.1.158 -O vmlinux-6.1.158 || true
+  args:
+    creates: "{{ e2b_kernels_dir }}/vmlinux-6.1.158"
+
+- name: 下载 Firecracker
+  shell: |
+    cd {{ e2b_firecracker_dir }}
+    wget -q https://github.com/e2b-dev/infra/releases/download/firecracker/v1.12.1_a41d3fb -O firecracker || true
+    chmod +x firecracker || true
+  args:
+    creates: "{{ e2b_firecracker_dir }}/firecracker"
+
+- name: 配置 Orchestrator 环境变量
+  template:
+    src: orchestrator.env.j2
+    dest: /etc/e2b/orchestrator.env
+    owner: e2b
+    group: e2b
+    mode: '0640'
+  notify: restart orchestrator
+
+- name: 创建 Orchestrator Nomad 任务文件
+  template:
+    src: orchestrator.nomad.j2
+    dest: /tmp/e2b-orchestrator.nomad
+    mode: '0640'
+  delegate_to: "{{ groups['nomad_server'][0] }}"
+  run_once: true
+
+- name: 提交 Orchestrator Nomad 任务
+  shell: |
+    nomad job run -token={{ hostvars[groups['nomad_server'][0]]['nomad_acl_token'] }} /tmp/e2b-orchestrator.nomad
+  delegate_to: "{{ groups['nomad_server'][0] }}"
+  run_once: true
