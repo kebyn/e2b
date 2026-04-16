@@ -1,10 +1,33 @@
 # E2B Feature Flags 完整分析与部署方案
 
+> 本文档是 **Feature Flags 私有化部署主文档**：负责维护完整 Flag 清单、默认值、YAML/Unleash 方案与代码改造建议。
+>
+> 相关文档：
+> - `LaunchDarkly私有化部署方案.md`：LaunchDarkly 现状、离线模式与阅读路径索引
+> - `核心组件详解.md`：Feature Flags 在整体架构里的作用
+> - `启动参数详解.md`：运行时环境变量（如 `LAUNCH_DARKLY_API_KEY`）
+
 ---
 
-## 1. Feature Flags 完整列表
+## 1. 阅读导航
 
-### 1.1 Boolean Flags
+### 如果你只想知道「现在不改代码怎么跑」
+- 看 **6. 推荐方案**
+- 如果只是私有化且不需要动态灰度，优先用 **YAML 配置**
+- 如果什么都不配，代码会回退到 **LaunchDarkly 离线默认值**
+
+### 如果你想知道「代码里到底有哪些 Flag」
+- 看 **2. Feature Flags 完整列表**
+
+### 如果你想接入开源替代品
+- 看 **3. Unleash 配置方案**
+- LaunchDarkly 专题说明见 `LaunchDarkly私有化部署方案.md`
+
+---
+
+## 2. Feature Flags 完整列表
+
+### 2.1 Boolean Flags
 
 > **注意**: 标记为 `dev: true` 的 Flags 在 `ENVIRONMENT=dev` 或 `ENVIRONMENT=local` 时为 `true`，在 `ENVIRONMENT=prod` 时为 `false`。
 
@@ -29,7 +52,7 @@
 | `sandbox-label-based-scheduling` | false | 基于标签的调度 | API |
 | `sandbox-placement-optimistic-resource-accounting` | false | 乐观资源计算 | API |
 
-### 1.2 Integer Flags
+### 2.2 Integer Flags
 
 | Flag 名称 | 默认值 | 单位 | 说明 | 影响组件 |
 |-----------|--------|------|------|----------|
@@ -58,7 +81,7 @@
 | `max-concurrent-sandbox-list-queries` | 0 | 个 | 并发 sandbox 列表查询数 (0=无限制) | API |
 | `max-concurrent-snapshot-build-queries` | 0 | 个 | 并发 snapshot build 查询数 (0=无限制) | API |
 
-### 1.3 String Flags
+### 2.3 String Flags
 
 | Flag 名称 | 默认值 | 说明 | 影响组件 |
 |-----------|--------|------|----------|
@@ -66,7 +89,7 @@
 | `build-io-engine` | Sync | IO 引擎 (Sync/Async) | Orchestrator |
 | `default-persistent-volume-type` | "" | 默认持久卷类型 | API |
 
-### 1.4 JSON Flags
+### 2.4 JSON Flags
 
 | Flag 名称 | 默认值 | 说明 | 影响组件 |
 |-----------|--------|------|----------|
@@ -81,9 +104,9 @@
 
 ---
 
-## 2. YAML 配置方案
+## 3. YAML 配置方案
 
-### 2.1 配置文件格式
+### 3.1 配置文件格式
 
 ```yaml
 # /etc/e2b/feature-flags.yaml
@@ -196,7 +219,7 @@ overrides:
       memory-prefetch-max-fetch-workers: 32
 ```
 
-### 2.2 配置加载代码
+### 3.2 配置加载代码
 
 ```go
 // packages/shared/pkg/featureflags/yaml_provider.go
@@ -306,7 +329,7 @@ func (p *YAMLProvider) Reload(path string) error {
 }
 ```
 
-### 2.3 环境变量
+### 3.3 环境变量
 
 ```bash
 # 启用 YAML 配置
@@ -316,9 +339,9 @@ export FEATURE_FLAGS_CONFIG=/etc/e2b/feature-flags.yaml
 
 ---
 
-## 3. Unleash 配置方案
+## 4. Unleash 配置方案
 
-### 3.1 Docker Compose 部署
+### 4.1 Docker Compose 部署
 
 ```yaml
 # docker-compose.unleash.yml
@@ -374,7 +397,7 @@ docker-compose -f docker-compose.unleash.yml up -d
 # 默认账号: admin / unleash4all
 ```
 
-### 3.2 Unleash Flags 配置
+### 4.2 Unleash Flags 配置
 
 ```bash
 #!/bin/bash
@@ -544,7 +567,7 @@ done
 echo "All flags created successfully!"
 ```
 
-### 3.3 Unleash 客户端代码
+### 4.3 Unleash 客户端代码
 
 ```go
 // packages/shared/pkg/featureflags/unleash_provider.go
@@ -637,7 +660,7 @@ func (p *UnleashProvider) Close() error {
 }
 ```
 
-### 3.4 Unleash 按团队/模板灰度
+### 4.4 Unleash 按团队/模板灰度
 
 ```bash
 # 创建团队 Context
@@ -694,7 +717,7 @@ curl -X POST "${UNLEASH_URL}/api/admin/features/max-sandboxes-per-node/environme
   }'
 ```
 
-### 3.5 环境变量
+### 4.5 环境变量
 
 ```bash
 # Unleash 配置
@@ -706,9 +729,9 @@ export UNLEASH_APP_NAME=e2b-api
 
 ---
 
-## 4. 修改代码支持多 Provider
+## 5. 修改代码支持多 Provider
 
-### 4.1 Provider 接口
+### 5.1 Provider 接口
 
 ```go
 // packages/shared/pkg/featureflags/provider.go
@@ -727,7 +750,7 @@ type Provider interface {
 }
 ```
 
-### 4.2 修改 Client
+### 5.2 修改 Client
 
 ```go
 // packages/shared/pkg/featureflags/client.go (修改后)
