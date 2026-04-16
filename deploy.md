@@ -3,23 +3,23 @@
 > This file is **an ad-hoc operator note**, not the canonical deployment guide.
 >
 > Related docs:
-> - `README.md`: repo entrypoint
-> - `self-host.md`: official cloud self-hosting flow
-> - `不修改代码完整部署指南.md`: manual production deployment path
-> - `DEV-LOCAL.md`: local development setup
+> - [`README.md`](./README.md): repo entrypoint
+> - [`self-host.md`](./self-host.md): official cloud self-hosting flow
+> - [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md): manual production deployment path
+> - [`DEV-LOCAL.md`](./DEV-LOCAL.md): local development setup
 
 ---
 
 ## Reading guide
 
 ### If you want the supported production path
-- Do **not** start here; use `self-host.md` or `不修改代码完整部署指南.md`
+- Do **not** start here; use [`self-host.md`](./self-host.md) or [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md)
 
 ### If you want a quick local / experimental bootstrap
 - Use this file as a scratchpad sequence
 
 ### If you want a maintained local development workflow
-- Use `DEV-LOCAL.md`
+- Use [`DEV-LOCAL.md`](./DEV-LOCAL.md)
 
 ---
 
@@ -93,4 +93,4 @@ make -C packages/clickhouse migrate-local
 
 ## Maintenance note
 
-If this file diverges from reality, prefer updating or removing commands here rather than treating it as a source of truth. The canonical docs are `self-host.md`, `DEV-LOCAL.md`, and `不修改代码完整部署指南.md`.
+If this file diverges from reality, prefer updating or removing commands here rather than treating it as a source of truth. The canonical docs are [`self-host.md`](./self-host.md), [`DEV-LOCAL.md`](./DEV-LOCAL.md), and [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md).

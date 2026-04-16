@@ -3,26 +3,26 @@
 > 本文档是 **Feature Flags 私有化部署主文档**：负责维护完整 Flag 清单、默认值、YAML/Unleash 方案与代码改造建议。
 >
 > 相关文档：
-> - `README.md`：仓库总入口与文档导航
-> - `LaunchDarkly私有化部署方案.md`：LaunchDarkly 现状、离线模式与阅读路径索引
-> - `核心组件详解.md`：Feature Flags 在整体架构里的作用
-> - `启动参数详解.md`：运行时环境变量（如 `LAUNCH_DARKLY_API_KEY`）
+> - [`README.md`](./README.md)：仓库总入口与文档导航
+> - [`LaunchDarkly私有化部署方案.md`](./LaunchDarkly私有化部署方案.md)：LaunchDarkly 现状、离线模式与阅读路径索引
+> - [`核心组件详解.md`](./核心组件详解.md)：Feature Flags 在整体架构里的作用
+> - [`启动参数详解.md`](./启动参数详解.md)：运行时环境变量（如 `LAUNCH_DARKLY_API_KEY`）
 
 ---
 
 ## 1. 阅读导航
 
 ### 如果你只想知道「现在不改代码怎么跑」
-- 看 **6. 推荐方案**
+- 看 [**6. 推荐方案**](#6-推荐方案)
 - 如果只是私有化且不需要动态灰度，优先用 **YAML 配置**
 - 如果什么都不配，代码会回退到 **LaunchDarkly 离线默认值**
 
 ### 如果你想知道「代码里到底有哪些 Flag」
-- 看 **2. Feature Flags 完整列表**
+- 看 [**2. Feature Flags 完整列表**](#2-feature-flags-完整列表)
 
 ### 如果你想接入开源替代品
-- 看 **3. Unleash 配置方案**
-- LaunchDarkly 专题说明见 `LaunchDarkly私有化部署方案.md`
+- 看 [**4. Unleash 配置方案**](#4-unleash-配置方案)
+- LaunchDarkly 专题说明见 [`LaunchDarkly私有化部署方案.md`](./LaunchDarkly私有化部署方案.md)
 
 ---
 

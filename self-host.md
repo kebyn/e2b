@@ -3,11 +3,11 @@
 > This is the **official self-hosting entrypoint** for the Terraform-based cloud deployment flow.
 >
 > Related docs:
-> - `README.md`: repository entrypoint
-> - `deploy.md`: ad-hoc local / experimental bootstrap notes
-> - `不修改代码完整部署指南.md`: manual production deployment without changing code
-> - `不修改代码高可用部署方案.md`: HA validation, failover, and operations checks
-> - `启动参数详解.md`: runtime environment variables and service parameters
+> - [`README.md`](./README.md): repository entrypoint
+> - [`deploy.md`](./deploy.md): ad-hoc local / experimental bootstrap notes
+> - [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md): manual production deployment without changing code
+> - [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md): HA validation, failover, and operations checks
+> - [`启动参数详解.md`](./启动参数详解.md): runtime environment variables and service parameters
 
 ---
 
@@ -17,13 +17,13 @@
 - Follow this document
 
 ### If you want a manual/no-code deployment walkthrough
-- See `不修改代码完整部署指南.md`
+- See [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md)
 
 ### If you already deployed and now need HA verification
-- See `不修改代码高可用部署方案.md`
+- See [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md)
 
 ### If you need to understand specific variables in `.env.*`
-- See `启动参数详解.md`
+- See [`启动参数详解.md`](./启动参数详解.md)
 
 ## Prerequisites
 
