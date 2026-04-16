@@ -64,29 +64,66 @@ func NewClient() (*Client, error) {
 
 ### 默认值列表
 
+> **注意**: 以下默认值来自代码 `packages/shared/pkg/featureflags/flags.go`，与 ENVIRONMENT 相关的 Flags（标记为 `dev: true`）在 `ENVIRONMENT=dev` 或 `ENVIRONMENT=local` 时为 `true`，在 `ENVIRONMENT=prod` 时为 `false`。
+
 ```yaml
-# 布尔 Flag
-sandbox-metrics-write: false
-sandbox-metrics-read: false
-host-stats-enabled: false
-use-nfs-for-snapshots: false
-use-nfs-for-templates: false
+# Boolean Flags (固定值)
+sandbox-metrics-write: true              # 固定 true
+sandbox-metrics-read: true               # 固定 true
 write-to-cache-on-writes: false
 peer-to-peer-chunk-transfer: false
-sandbox-auto-resume: false
-can-use-persistent-volumes: false
+peer-to-peer-async-checkpoint: false
+best-of-k-can-fit: true
+best-of-k-too-many-starting: false
+edge-provided-sandbox-metrics: false
+execution-metrics-on-webhooks: false
+sandbox-label-based-scheduling: false
+sandbox-placement-optimistic-resource-accounting: false
 
-# 整数 Flag
+# Boolean Flags (与 ENVIRONMENT 相关)
+host-stats-enabled: dev: true            # ENVIRONMENT=dev/local 时 true
+use-nfs-for-snapshots: dev: true
+use-nfs-for-templates: dev: true
+use-nfs-for-building-templates: dev: true
+create-storage-cache-spans: dev: true
+sandbox-auto-resume: dev: true
+can-use-persistent-volumes: dev: true
+
+# Integer Flags
 max-sandboxes-per-node: 200
 gcloud-concurrent-upload-limit: 8
-nbd-connections-per-device: 4
-envd-init-request-timeout-milliseconds: 500
-host-stats-sampling-interval: 5000
+gcloud-max-tasks: 16
+clickhouse-batcher-max-batch-size: 100
+clickhouse-batcher-max-delay: 1000       # 毫秒
+clickhouse-batcher-queue-size: 1000
+best-of-k-sample-size: 3
+best-of-k-max-overcommit: 400            # 百分比 (R=4)
+best-of-k-alpha: 50                      # 百分比 (Alpha=0.5)
+envd-init-request-timeout-milliseconds: 50  # 毫秒 (不是 500!)
+host-stats-sampling-interval: 5000       # 毫秒
+max-cache-writer-concurrency: 10
 build-cache-max-usage-percentage: 85
+build-provision-version: 0
+nbd-connections-per-device: 1            # 注意：是 1，不是 4!
+memory-prefetch-max-fetch-workers: 16
+memory-prefetch-max-copy-workers: 8
+tcpfirewall-max-connections-per-sandbox: -1  # -1 表示无限制
+sandbox-max-incoming-connections: -1
+build-base-rootfs-size-limit-mb: 25000
+minimum-autoresume-timeout: 300          # 秒
+max-concurrent-snapshot-upserts: 0       # 0 表示无限制
+max-concurrent-sandbox-list-queries: 0
+max-concurrent-snapshot-build-queries: 0
 
-# 字符串 Flag
-build-firecracker-version: "v1.12.1_a41d3fb"
+# String Flags
+build-firecracker-version: "v1.12.1_210cbac"  # 注意：版本号后缀!
 build-io-engine: "Sync"
+default-persistent-volume-type: ""
+
+# Firecracker 版本映射 (JSON)
+firecracker-versions:
+  v1.10: "v1.10.1_30cbb07"
+  v1.12: "v1.12.1_210cbac"
 ```
 
 ---

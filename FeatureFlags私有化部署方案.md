@@ -6,10 +6,12 @@
 
 ### 1.1 Boolean Flags
 
+> **注意**: 标记为 `dev: true` 的 Flags 在 `ENVIRONMENT=dev` 或 `ENVIRONMENT=local` 时为 `true`，在 `ENVIRONMENT=prod` 时为 `false`。
+
 | Flag 名称 | 默认值 | 说明 | 影响组件 |
 |-----------|--------|------|----------|
-| `sandbox-metrics-write` | dev: true | 是否写入 ClickHouse 指标 | Orchestrator |
-| `sandbox-metrics-read` | dev: true | 是否读取 ClickHouse 指标 | API |
+| `sandbox-metrics-write` | **true** (固定) | 是否写入 ClickHouse 指标 | Orchestrator |
+| `sandbox-metrics-read` | **true** (固定) | 是否读取 ClickHouse 指标 | API |
 | `host-stats-enabled` | dev: true | 是否收集主机统计 | Orchestrator |
 | `use-nfs-for-snapshots` | dev: true | 使用 NFS 存储快照 | Orchestrator |
 | `use-nfs-for-templates` | dev: true | 使用 NFS 存储模板 | Orchestrator |
@@ -20,12 +22,12 @@
 | `edge-provided-sandbox-metrics` | false | 使用 Edge 提供的指标 | API |
 | `create-storage-cache-spans` | dev: true | 创建存储缓存追踪 span | Orchestrator |
 | `sandbox-auto-resume` | dev: true | Sandbox 自动恢复 | API/Orchestrator |
-| `sandbox-catalog-local-cache` | true | 使用本地缓存 catalog | API |
 | `peer-to-peer-chunk-transfer` | false | 启用 P2P 块传输 | Orchestrator |
 | `peer-to-peer-async-checkpoint` | false | 异步 checkpoint 上传 | Orchestrator |
 | `can-use-persistent-volumes` | dev: true | 是否允许持久卷 | API |
 | `execution-metrics-on-webhooks` | false | Webhook 包含执行指标 | Orchestrator |
 | `sandbox-label-based-scheduling` | false | 基于标签的调度 | API |
+| `sandbox-placement-optimistic-resource-accounting` | false | 乐观资源计算 | API |
 
 ### 1.2 Integer Flags
 
@@ -40,26 +42,27 @@
 | `best-of-k-sample-size` | 3 | 个 | BestOfK 采样数 (K) | API |
 | `best-of-k-max-overcommit` | 400 | % | 最大超卖比例 (R=4) | API |
 | `best-of-k-alpha` | 50 | % | 当前使用权重 (Alpha=0.5) | API |
-| `envd-init-request-timeout-milliseconds` | 50 | ms | envd 初始化超时 | Orchestrator |
+| `envd-init-request-timeout-milliseconds` | **50** | ms | envd 初始化超时 | Orchestrator |
 | `host-stats-sampling-interval` | 5000 | ms | 主机统计采样间隔 | Orchestrator |
 | `max-cache-writer-concurrency` | 10 | 个 | 缓存写入并发数 | Orchestrator |
 | `build-cache-max-usage-percentage` | 85 | % | 缓存磁盘最大使用率 | Orchestrator |
 | `build-provision-version` | 0 | - | 构建配置版本 | Orchestrator |
-| `nbd-connections-per-device` | 4 | 个 | NBD 设备连接数 | Orchestrator |
+| `nbd-connections-per-device` | **1** | 个 | NBD 设备连接数 | Orchestrator |
 | `memory-prefetch-max-fetch-workers` | 16 | 个 | 内存预取最大抓取 worker | Orchestrator |
 | `memory-prefetch-max-copy-workers` | 8 | 个 | 内存预取最大复制 worker | Orchestrator |
-| `tcpfirewall-max-connections-per-sandbox` | -1 | 个 | TCP 防火墙每 Sandbox 连接数 | Orchestrator |
-| `sandbox-max-incoming-connections` | -1 | 个 | HTTP 代理最大连接数 | API |
+| `tcpfirewall-max-connections-per-sandbox` | -1 | 个 | TCP 防火墙每 Sandbox 连接数 (-1=无限制) | Orchestrator |
+| `sandbox-max-incoming-connections` | -1 | 个 | HTTP 代理最大连接数 (-1=无限制) | API |
 | `build-base-rootfs-size-limit-mb` | 25000 | MB | 基础 rootfs 大小限制 | Orchestrator |
-| `max-concurrent-snapshot-upserts` | 0 | 个 | 并发 snapshot upsert 数 | API |
-| `max-concurrent-sandbox-list-queries` | 0 | 个 | 并发 sandbox 列表查询数 | API |
-| `max-concurrent-snapshot-build-queries` | 0 | 个 | 并发 snapshot build 查询数 | API |
+| `minimum-autoresume-timeout` | 300 | s | 最小自动恢复超时 | API |
+| `max-concurrent-snapshot-upserts` | 0 | 个 | 并发 snapshot upsert 数 (0=无限制) | API |
+| `max-concurrent-sandbox-list-queries` | 0 | 个 | 并发 sandbox 列表查询数 (0=无限制) | API |
+| `max-concurrent-snapshot-build-queries` | 0 | 个 | 并发 snapshot build 查询数 (0=无限制) | API |
 
 ### 1.3 String Flags
 
 | Flag 名称 | 默认值 | 说明 | 影响组件 |
 |-----------|--------|------|----------|
-| `build-firecracker-version` | v1.12.1_a41d3fb | 构建使用的 Firecracker 版本 | Orchestrator |
+| `build-firecracker-version` | **v1.12.1_210cbac** | 构建使用的 Firecracker 版本 | Orchestrator |
 | `build-io-engine` | Sync | IO 引擎 (Sync/Async) | Orchestrator |
 | `default-persistent-volume-type` | "" | 默认持久卷类型 | API |
 
@@ -70,10 +73,11 @@
 | `clean-nfs-cache` | null | 清理 NFS 缓存命令 | Orchestrator |
 | `rate-limit-config` | null | 按团队的速率限制配置 | API |
 | `preferred-build-node` | null | 优先构建节点 | API |
-| `firecracker-versions` | {"v1.10":"v1.10.1_...","v1.12":"v1.12.1_..."} | Firecracker 版本映射 | Orchestrator |
-| `tracked-templates-for-metrics` | {"base":true,...} | 指标跟踪的模板列表 | Orchestrator |
+| `firecracker-versions` | {"v1.10":"v1.10.1_30cbb07","v1.12":"v1.12.1_210cbac"} | Firecracker 版本映射 | Orchestrator |
+| `tracked-templates-for-metrics` | {"base":true,"code-interpreter-v1":true,...} | 指标跟踪的模板列表 | Orchestrator |
 | `chunker-config` | {"useStreaming":false,"minReadBatchSizeKB":16} | 分块器配置 | Orchestrator |
-| `tcpfirewall-egress-throttle-config` | {"ops":{...},"bandwidth":{...}} | 出口流量限制 | Orchestrator |
+| `tcpfirewall-egress-throttle-config` | {"ops":{"bucketSize":-1},"bandwidth":{"bucketSize":-1}} | 出口流量限制 | Orchestrator |
+| `block-drive-throttle-config` | {"ops":{"bucketSize":-1},"bandwidth":{"bucketSize":-1}} | 磁盘限速 | Orchestrator |
 
 ---
 
@@ -125,7 +129,7 @@ integer_flags:
   max-cache-writer-concurrency: 10
   build-cache-max-usage-percentage: 85
   build-provision-version: 0
-  nbd-connections-per-device: 4
+  nbd-connections-per-device: 1            # 注意：默认值是 1
   memory-prefetch-max-fetch-workers: 16
   memory-prefetch-max-copy-workers: 8
   tcpfirewall-max-connections-per-sandbox: -1
@@ -137,7 +141,7 @@ integer_flags:
 
 # String Flags
 string_flags:
-  build-firecracker-version: "v1.12.1_a41d3fb"
+  build-firecracker-version: "v1.12.1_210cbac"  # 注意：版本号后缀
   build-io-engine: "Sync"
   default-persistent-volume-type: ""
 
@@ -145,7 +149,7 @@ string_flags:
 json_flags:
   firecracker-versions:
     v1.10: "v1.10.1_30cbb07"
-    v1.12: "v1.12.1_a41d3fb"
+    v1.12: "v1.12.1_210cbac"
   
   tracked-templates-for-metrics:
     base: true
@@ -445,12 +449,12 @@ integer_flags=(
   "best-of-k-sample-size:3"
   "best-of-k-max-overcommit:400"
   "best-of-k-alpha:50"
-  "envd-init-request-timeout-milliseconds:50"
+  "envd-init-request-timeout-milliseconds:50"    # 注意：是 50，不是 500
   "host-stats-sampling-interval:5000"
   "max-cache-writer-concurrency:10"
   "build-cache-max-usage-percentage:85"
   "build-provision-version:0"
-  "nbd-connections-per-device:4"
+  "nbd-connections-per-device:1"                  # 注意：是 1，不是 4
   "memory-prefetch-max-fetch-workers:16"
   "memory-prefetch-max-copy-workers:8"
   "tcpfirewall-max-connections-per-sandbox:-1"
@@ -499,7 +503,7 @@ done
 # ============================================================
 
 string_flags=(
-  "build-firecracker-version:v1.12.1_a41d3fb"
+  "build-firecracker-version:v1.12.1_210cbac"  # 注意：版本号后缀
   "build-io-engine:Sync"
   "default-persistent-volume-type:"
 )
