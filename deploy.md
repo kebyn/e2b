@@ -159,7 +159,7 @@ make -C packages/api build && make -C packages/orchestrator build-local && make 
 # === 启动数据层 ===
 # 使用 docker-compose 启动 PostgreSQL + Redis + ClickHouse
 export POSTGRES_CONNECTION_STRING="postgresql://e2b:password@127.0.0.1:5432/e2b?sslmode=disable"
-export REDIS_URL="redis://127.0.0.1:6379"
+export REDIS_URL="127.0.0.1:6379"
 export LOKI_URL="http://127.0.0.1:3100"  # 如果使用单独启动的 Loki
 export CLICKHOUSE_CONNECTION_STRING="clickhouse://clickhouse:clickhouse@127.0.0.1:9000/default"  # ClickHouse 迁移必需
 
@@ -188,7 +188,7 @@ make -C packages/clickhouse migrate-local
 ```bash
 # === 必需变量 ===
 export POSTGRES_CONNECTION_STRING="postgresql://e2b:password@127.0.0.1:5432/e2b?sslmode=disable"
-export REDIS_URL="redis://127.0.0.1:6379"
+export REDIS_URL="127.0.0.1:6379"
 export LOKI_URL="http://127.0.0.1:3100"
 
 # === Volume Token（API 启动必需）===

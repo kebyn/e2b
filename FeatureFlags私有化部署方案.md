@@ -103,6 +103,16 @@
 | `tcpfirewall-egress-throttle-config` | {"ops":{"bucketSize":-1},"bandwidth":{"bucketSize":-1}} | 出口流量限制 | Orchestrator |
 | `block-drive-throttle-config` | {"ops":{"bucketSize":-1},"bandwidth":{"bucketSize":-1}} | 磁盘限速 | Orchestrator |
 
+### 2.4 上游变更说明（2026.17+13）
+
+> **构造函数公开化**：自上游 `upstream/main` 起，Feature Flag 构造函数已从私有变为公开：
+> - `newBoolFlag` → `NewBoolFlag`
+> - `newIntFlag` → `NewIntFlag`
+> - `newStringFlag` → `NewStringFlag`
+> - `newJSONFlag` → `NewJSONFlag`
+>
+> 此变更简化了私有化部署中自定义 Provider 的实现，无需修改上游代码即可创建自定义 Flag。
+
 ---
 
 ## 3. YAML 配置方案
@@ -852,3 +862,7 @@ export FEATURE_FLAGS_PROVIDER=unleash
 export UNLEASH_URL=http://unleash:4242/api
 export UNLEASH_TOKEN=your-token
 ```
+
+---
+
+*文档同步至上游 e2b-dev/infra 仓库 upstream/main (2026.17+13)*

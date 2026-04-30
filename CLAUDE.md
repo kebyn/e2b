@@ -152,7 +152,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 
 ### Key Technologies
 
-- **Go 1.25.4** with workspaces (`go.work`)
+- **Go 1.25.9** with workspaces (`go.work`)
 - **Firecracker** for microVM virtualization
 - **PostgreSQL** for primary data (sqlc for queries)
 - **ClickHouse** for analytics
@@ -216,7 +216,8 @@ go test -race -v -run TestCreateSandbox ./internal/handlers
 
 ### Environment Variables
 - Environment configs: `.env.{prod,staging,dev}`
-- Template: `.env.template`
+- GCP template: `.env.gcp.template`
+- AWS template: `.env.aws.template`
 - Switch: `make switch-env ENV=staging`
 - Secrets stored in GCP Secrets Manager (production)
 
@@ -263,7 +264,7 @@ Self-hosting is fully supported on GCP (AWS in progress). See `self-host.md` for
 
 Key steps:
 1. Create GCP project and configure quotas
-2. Create `.env.{prod,staging,dev}` from `.env.template`
+2. Create `.env.{prod,staging,dev}` from `.env.gcp.template`
 3. Run `make switch-env ENV=<env>`
 4. Run `make login-gcloud && make init`
 5. Run `make build-and-upload && make copy-public-builds`

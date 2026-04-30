@@ -352,7 +352,7 @@ stringData:
   POSTGRES_CONNECTION_STRING: "postgresql://e2b:password@postgres:5432/e2b?sslmode=disable"
   
   # Redis
-  REDIS_URL: "redis://redis:6379"
+  REDIS_URL: "redis:6379"
   
   # 认证（可选）
   SUPABASE_JWT_SECRETS: ""
@@ -919,7 +919,7 @@ roleRef:
 POSTGRES_CONNECTION_STRING=postgresql://e2b:password@postgres:5432/e2b
 
 # Redis
-REDIS_URL=redis://redis:6379
+REDIS_URL=redis:6379
 
 # 模板存储
 TEMPLATE_BUCKET_NAME=e2b-templates
@@ -962,7 +962,7 @@ LOKI_URL=http://loki:3100
 kubectl create secret generic e2b-secrets \
   --namespace e2b \
   --from-literal=POSTGRES_CONNECTION_STRING="postgresql://..." \
-  --from-literal=REDIS_URL="redis://..." \
+  --from-literal=REDIS_URL="redis:6379" \
   --from-literal=ADMIN_TOKEN="$(openssl rand -hex 32)"
 
 # 或使用 Sealed Secrets / External Secrets Operator
@@ -1184,3 +1184,7 @@ kubectl apply -f ingress.yaml
 kubectl get pods -n e2b
 kubectl logs -f deployment/e2b-api -n e2b
 ```
+
+---
+
+*文档同步至上游 e2b-dev/infra 仓库 upstream/main (2026.17+13)*
