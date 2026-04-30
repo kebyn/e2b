@@ -52,7 +52,12 @@ docker run -d --name postgres \
 
 # 验证
 docker exec postgres pg_isready -U e2b
+
+# 连接串格式 (用于后续迁移和 API 启动)
+# postgresql://e2b:password@127.0.0.1:5432/e2b?sslmode=disable
 ```
+
+> **注意**: 此 Quick Start 创建的用户/数据库与下方迁移命令使用相同的连接串。如果使用其他 PostgreSQL 实例，请确保连接串中的用户名、密码、数据库一致。
 
 ### Redis
 
@@ -153,9 +158,10 @@ make -C packages/api build && make -C packages/orchestrator build-local && make 
 
 # === 启动数据层 ===
 # 使用 docker-compose 启动 PostgreSQL + Redis + ClickHouse
-export POSTGRES_CONNECTION_STRING="postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"
+export POSTGRES_CONNECTION_STRING="postgresql://e2b:password@127.0.0.1:5432/e2b?sslmode=disable"
 export REDIS_URL="redis://127.0.0.1:6379"
 export LOKI_URL="http://127.0.0.1:3100"  # 如果使用单独启动的 Loki
+export CLICKHOUSE_CONNECTION_STRING="clickhouse://clickhouse:clickhouse@127.0.0.1:9000/default"  # ClickHouse 迁移必需
 
 # Generate ClickHouse config before migrate-local
 cd packages/local-dev && USERNAME=clickhouse PASSWORD=clickhouse PORT=9000 envsubst < ../clickhouse/local/config.tpl.xml > clickhouse-config-generated.xml && cd ~/infra
@@ -165,6 +171,7 @@ docker compose --file ./packages/local-dev/docker-compose.yaml logs -f
 # Ctrl+C after logs are healthy, then continue
 
 # === 数据库迁移 ===
+# 注意: 迁移命令依赖上方已设置的环境变量
 make -C packages/db migrate
 make -C packages/local-dev seed-database
 make -C packages/clickhouse migrate-local
@@ -191,6 +198,7 @@ export VOLUME_TOKEN_SIGNING_KEY="ECDSA:$(openssl ecparam -name prime256v1 -genke
 export VOLUME_TOKEN_SIGNING_KEY_NAME="local-dev"
 
 # === 可选变量 ===
+# 注意: CLICKHOUSE_CONNECTION_STRING 在迁移时需要设置，但在生产运行时可选（有 NoopClient 降级）
 export CLICKHOUSE_CONNECTION_STRING="clickhouse://clickhouse:clickhouse@127.0.0.1:9000/default"
 export ENVIRONMENT="local"
 export NODE_ID="local-$(hostname)"
