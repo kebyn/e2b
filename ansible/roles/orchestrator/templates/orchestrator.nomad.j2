@@ -22,7 +22,8 @@ job "e2b-orchestrator" {
         NODE_IP                     = "${attr.unique.network.ip-address}"
         ENVIRONMENT                 = "{{ environment }}"
         ORCHESTRATOR_SERVICES       = "orchestrator"
-        REDIS_URL                   = "redis://{{ hostvars[groups['redis_sentinel'][0]]['ansible_host'] }}:{{ redis_sentinel_port }}/0?sentinel=mymaster"
+        # ⚠️ 格式：host:port，不支持 redis:// 前缀；Sentinel 需挂 HAProxy
+        REDIS_URL                   = "{{ redis_host | default(hostvars[groups['redis_master'][0]]['ansible_host']) }}:{{ redis_port }}"
         TEMPLATE_BUCKET_NAME        = "{{ template_bucket_name }}"
         BUILD_CACHE_BUCKET_NAME     = "{{ build_cache_bucket_name }}"
         STORAGE_PROVIDER            = "{{ storage_provider }}"
@@ -32,6 +33,8 @@ job "e2b-orchestrator" {
         HOST_KERNELS_DIR            = "{{ e2b_kernels_dir }}"
         FIRECRACKER_VERSIONS_DIR    = "{{ e2b_firecracker_dir }}"
         HOST_ENVD_PATH              = "{{ e2b_envd_path }}"
+        HOST_BUSYBOX_DIR            = "{{ e2b_busybox_dir | default(e2b_base_dir + '/busybox') }}"
+        SHARED_CHUNK_CACHE_PATH     = "{{ e2b_orchestrator_path }}/cache"
         GRPC_PORT                   = "{{ orchestrator_grpc_port }}"
         PROXY_PORT                  = "{{ orchestrator_proxy_port }}"
         {% if clickhouse_enabled %}

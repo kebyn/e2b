@@ -76,6 +76,14 @@
 | PostgreSQL | StatefulSet | 3 | 主从复制 + 连接池 |
 | ClickHouse | StatefulSet | 1+ | 可选，用于指标存储 |
 
+> **K8s Node Pool 等价方案**
+> - Nomad `node_pool` 在 K8s 中对应 `nodeSelector` 或 `nodeAffinity`
+> - Orchestrator 使用 DaemonSet，天然每个节点运行一个（无需 nodeSelector）
+> - 如需添加 Template Manager：
+>   - 使用 Deployment + `nodeSelector: pool: build`
+>   - 或通过 `nodeAffinity` 限制到特定节点池
+>   - 需修改 `GRPC_PORT` 为 `5009` 避免与 Orchestrator 端口冲突（DaemonSet 已占用 5008）
+
 ---
 
 ## 2. 前置条件

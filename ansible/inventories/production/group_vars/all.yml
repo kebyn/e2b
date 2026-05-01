@@ -25,8 +25,11 @@ postgres_effective_cache_size: "12GB"
 
 # ============================================================
 # Redis 配置 (必需)
+# ⚠️ redis_host 是应用实际连接的 Redis 端点（host:port 格式中的 host 部分）
+# ⚠️ 如使用 Sentinel，需部署 HAProxy 并将 redis_host 指向 HAProxy 地址
 # ============================================================
 redis_version: "7"
+redis_host: ""             # ← 必须填写：Redis 主节点或 HAProxy 地址
 redis_port: 6379
 redis_sentinel_port: 26379
 redis_maxmemory: "2gb"
@@ -44,12 +47,13 @@ nomad_acl_enabled: true
 # ============================================================
 
 # 存储配置
+# ⚠️ 私有化部署使用 Local；GCP 云部署使用 GCPBucket；AWS 使用 AWSBucket
 template_bucket_name: e2b-templates
 build_cache_bucket_name: e2b-build-cache
-storage_provider: GCPBucket
-gcp_project_id: ""
-gcp_region: us-central1
-google_service_account_base64: ""
+storage_provider: Local    # 私有化默认 Local；云部署改为 GCPBucket 或 AWSBucket
+gcp_project_id: ""         # 仅 GCPBucket 时需要
+gcp_region: us-central1    # 仅 GCPBucket 时需要
+google_service_account_base64: ""  # 仅 GCPBucket 时需要
 
 # 认证配置
 admin_token: "CHANGE_ME_ADMIN_TOKEN"
@@ -106,6 +110,7 @@ e2b_fc_vm_dir: "{{ e2b_base_dir }}/fc-vm"
 e2b_kernels_dir: "{{ e2b_base_dir }}/kernels"
 e2b_firecracker_dir: "{{ e2b_base_dir }}/firecracker"
 e2b_envd_path: "{{ e2b_base_dir }}/envd/envd"
+e2b_busybox_dir: "{{ e2b_base_dir }}/busybox"
 
 # ============================================================
 # 端口配置
