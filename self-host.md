@@ -82,7 +82,7 @@ Check if you can use config for terraform state management
 
 1. Go to `console.cloud.google.com` and create a new GCP project
     > Make sure your Quota allows you to have at least 2500G for `Persistent Disk SSD (GB)` and at least 24 for `CPUs`
-2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required if not specified otherwise.
+2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.gcp.template`](.env.gcp.template). You can pick any of them. Make sure to fill in the values. All are required if not specified otherwise.
     > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct or Shared
     > The variant needs to be IPv4 compatible. You can either use Shared or use the IPv4 add-on in Connect screen
 3. Run `make set-env ENV={prod,staging,dev}` to start using your env
@@ -141,7 +141,7 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
 
 ### Steps
 
-1. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). Make sure to fill in the AWS-specific values:
+1. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.aws.template`](.env.aws.template). Make sure to fill in the AWS-specific values:
     - `PROVIDER=aws`
     - `AWS_PROFILE` - your AWS CLI profile name
     - `AWS_ACCOUNT_ID` - your AWS account ID
