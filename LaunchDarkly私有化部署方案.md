@@ -27,8 +27,8 @@
 
 [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md) 已经覆盖了：
 - 完整 Feature Flags 清单与默认值
-- YAML 配置方案
-- Unleash 方案
+- YAML 配置可选改造方案
+- Unleash 可选改造方案
 - 多 Provider 改造思路
 - 部署建议与推荐路线
 
@@ -70,33 +70,19 @@ func NewClient() (*Client, error) {
 
 ## 3. 私有化场景下的推荐阅读路径
 
-### 场景 A：不需要动态灰度 / 不想改代码
+| 场景 | 当前能力 / 建议 | 继续阅读 |
+|------|------------------|----------|
+| 不需要动态灰度，只想无代码跑起来 | 不设置 `LAUNCH_DARKLY_API_KEY`，使用代码内 fallback 默认值 | [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航) |
+| 想确认每个 Flag 的默认值 | 以 `packages/shared/pkg/featureflags/flags.go` 为准 | [`FeatureFlags私有化部署方案.md` 的完整列表](./FeatureFlags私有化部署方案.md#2-feature-flags-完整列表) |
+| 想用 YAML / Unleash / 自建服务管理 Flag | 这是可选代码改造，不是 `2026.28` 现有无代码能力 | [`FeatureFlags私有化部署方案.md` 的私有化替代方案](./FeatureFlags私有化部署方案.md#4-私有化替代方案) |
+| 只查 `LAUNCH_DARKLY_API_KEY` 配置 | 看运行时配置参考 | [`启动参数详解.md`](./启动参数详解.md#阅读导航) |
 
-直接不设置：
+最小私有化部署可以直接不设置：
 
 ```bash
 # 留空或不设置即可
 # export LAUNCH_DARKLY_API_KEY=
 ```
-
-然后查看：
-- [`FeatureFlags私有化部署方案.md` 的 6. 推荐方案](./FeatureFlags私有化部署方案.md#6-推荐方案)
-- [`FeatureFlags私有化部署方案.md` 的 2. Feature Flags 完整列表](./FeatureFlags私有化部署方案.md#2-feature-flags-完整列表)
-
-适用场景：
-- 单节点部署
-- 测试环境
-- 生产环境但接受“固定默认值”
-
-### 场景 B：不使用 LaunchDarkly，但仍想管理 Flag
-
-优先看主文档中的替代方案：
-- [`FeatureFlags私有化部署方案.md` 的 3. YAML 配置方案](./FeatureFlags私有化部署方案.md#3-yaml-配置方案)
-- [`FeatureFlags私有化部署方案.md` 的 4. Unleash 配置方案](./FeatureFlags私有化部署方案.md#4-unleash-配置方案)
-
-建议：
-- **不需要灰度**：用 YAML
-- **需要灰度 / UI / 动态下发**：用 Unleash
 
 ---
 
@@ -112,7 +98,7 @@ func NewClient() (*Client, error) {
 ### [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md) 负责
 - 完整 Flag 清单
 - 精确默认值
-- YAML / Unleash 方案细节
+- YAML / Unleash 可选改造方案
 - 代码改造接口与 Provider 设计
 
 ### [`核心组件详解.md`](./核心组件详解.md) 负责
@@ -124,34 +110,6 @@ func NewClient() (*Client, error) {
 
 ---
 
-## 5. 私有化部署建议
+## 5. 一句话总结
 
-### 最小成本
-
-不配置 `LAUNCH_DARKLY_API_KEY`，直接使用离线默认值。
-
-### 需要配置化管理
-
-改用 YAML 配置，避免继续维护 LaunchDarkly 依赖。
-
-### 需要灰度 / UI / 多环境管理
-
-改用 Unleash；具体落地方式见：
-
-- [`FeatureFlags私有化部署方案.md` 的 4. Unleash 配置方案](./FeatureFlags私有化部署方案.md#4-unleash-配置方案)
-
----
-
-## 6. 快速决策
-
-| 需求 | 建议方案 | 继续阅读 |
-|------|----------|----------|
-| 只想跑起来 | LaunchDarkly 离线模式 | [`FeatureFlags私有化部署方案.md` 第 6 节](./FeatureFlags私有化部署方案.md#6-推荐方案) |
-| 想用文件管理配置 | YAML | [`FeatureFlags私有化部署方案.md` 第 3 节](./FeatureFlags私有化部署方案.md#3-yaml-配置方案) |
-| 想要灰度发布和 UI | Unleash | [`FeatureFlags私有化部署方案.md` 第 4 节](./FeatureFlags私有化部署方案.md#4-unleash-配置方案) |
-
----
-
-## 7. 一句话总结
-
-**LaunchDarkly 在私有化部署里不是必须组件。** 当前代码已经支持“未配置 API Key 时回退到离线默认值”，所以大多数私有化场景应把 [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md) 作为主文档，按是否需要灰度能力来选择“离线默认值 / YAML / Unleash”。
+**LaunchDarkly 在私有化部署里不是必须组件。** 当前代码已经支持“未配置 API Key 时回退到离线默认值”。大多数私有化场景应把 [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md) 作为主文档；如果要 YAML / Unleash / 自建服务，需要按该文档实现 provider 改造。
