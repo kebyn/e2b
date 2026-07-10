@@ -92,10 +92,16 @@ ansible-playbook -i inventories/production/hosts.ini playbooks/verify.yml
 在 `group_vars/all.yml` 中配置:
 
 ```yaml
-# 启用 Dashboard (需要先配置 Supabase)
+# 启用 Dashboard API（需要先配置 Auth Provider/Ory）
 dashboard_enabled: true
-supabase_url: "https://your-project.supabase.co"
-supabase_anon_key: "your-anon-key"
+auth_provider_config: '{"jwt":[]}'
+ory_sdk_url: "https://ory.example.com"
+ory_project_api_token: "your-ory-project-token"
+ory_issuer_url: "https://auth.example.com"
+
+# 旧 Dashboard 前端如果仍依赖 Supabase SDK，可继续配置以下兼容变量
+supabase_url: ""
+supabase_anon_key: ""
 
 # 启用 Template Manager
 template_manager_enabled: true

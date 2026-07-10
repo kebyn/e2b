@@ -1,6 +1,6 @@
 # Daytona Kubernetes 生产部署指南
 
-> 基于 [daytonaio/daytona](https://github.com/daytonaio/daytona) v0.157.0 源码分析  
+> 基于 [daytonaio/daytona](https://github.com/daytonaio/daytona) v0.157.0 源码分析
 > 官方未提供 K8s 部署文档，本方案通过逆向分析 Docker Compose 和源码构建
 
 ---
@@ -544,7 +544,7 @@ ssh -p 2222 test-token@ssh.sandbox.company.com -v
 ```bash
 # 查看活跃查询
 kubectl -n daytona exec -it daytona-postgres-1 -- \
-  psql -U daytona -c "SELECT pid, now() - pg_stat_activity.query_start AS duration, query 
+  psql -U daytona -c "SELECT pid, now() - pg_stat_activity.query_start AS duration, query
   FROM pg_stat_activity WHERE state != 'idle' ORDER BY duration DESC LIMIT 10;"
 
 # 查看连接数

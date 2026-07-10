@@ -97,7 +97,7 @@
   CPU: 8 核
   内存: 32GB
   存储: 200GB SSD
-  
+
 # 网络要求
 - 支持 CNI (Calico/Cilium 推荐)
 - 支持 LoadBalancer 或 NodePort
@@ -139,167 +139,45 @@ Orchestrator 需要以下特权（用于管理 sandbox）：
 
 ---
 
-## 3. 代码改造方案
+## 3. 2026.28 内置 K8s 支持
 
-### 3.1 新增 K8s 服务发现
+`2026.28` 已经内置 Kubernetes 服务发现，不需要再新增 discovery 代码或修改 API 启动逻辑。当前代码中的入口如下：
 
-创建文件：`packages/api/internal/clusters/discovery/kubernetes.go`
+| 能力 | 当前代码 |
+|------|----------|
+| Orchestrator Pod 发现 | `packages/api/internal/orchestrator/discovery/kubernetes.go` |
+| Template Manager Pod 发现 | `packages/api/internal/clusters/discovery/kubernetes.go` |
+| Provider 选择 | `packages/api/internal/handlers/store.go` |
+| 配置模型 | `packages/api/internal/cfg/model.go` |
 
-```go
-package discovery
+### 3.1 API 服务发现配置
 
-import (
-    "context"
-    "fmt"
-
-    "github.com/google/uuid"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/rest"
-
-    "github.com/e2b-dev/infra/packages/shared/pkg/consts"
-)
-
-type K8sServiceDiscovery struct {
-    clientset *kubernetes.Clientset
-    clusterID uuid.UUID
-    namespace string
-    labelSelector string
-}
-
-func NewK8sServiceDiscovery(clusterID uuid.UUID, namespace string) (*K8sServiceDiscovery, error) {
-    config, err := rest.InClusterConfig()
-    if err != nil {
-        return nil, fmt.Errorf("failed to get in-cluster config: %w", err)
-    }
-
-    clientset, err := kubernetes.NewForConfig(config)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create k8s client: %w", err)
-    }
-
-    return &K8sServiceDiscovery{
-        clientset:     clientset,
-        clusterID:     clusterID,
-        namespace:     namespace,
-        labelSelector: "app=e2b-orchestrator",
-    }, nil
-}
-
-func (sd *K8sServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
-    pods, err := sd.clientset.CoreV1().Pods(sd.namespace).List(ctx, metav1.ListOptions{
-        LabelSelector: sd.labelSelector,
-        FieldSelector: "status.phase=Running",
-    })
-    if err != nil {
-        return nil, fmt.Errorf("failed to list orchestrator pods: %w", err)
-    }
-
-    result := make([]Item, 0, len(pods.Items))
-    for _, pod := range pods.Items {
-        if pod.Status.PodIP == "" {
-            continue
-        }
-
-        result = append(result, Item{
-            UniqueIdentifier:     string(pod.UID),
-            NodeID:               pod.Spec.NodeName,
-            InstanceID:           pod.Name,
-            LocalIPAddress:       pod.Status.PodIP,
-            LocalInstanceApiPort: consts.OrchestratorAPIPort,
-        })
-    }
-
-    return result, nil
-}
+```bash
+SERVICE_DISCOVERY_PROVIDER=kubernetes
+K8S_NAMESPACE=e2b
+K8S_ORCHESTRATOR_POD_LABEL_SELECTOR=app.kubernetes.io/name=orchestrator
+K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR=app.kubernetes.io/name=template-manager
 ```
 
-### 3.2 修改配置模型
+`SERVICE_DISCOVERY_PROVIDER` 的有效值是：
 
-修改文件：`packages/api/internal/cfg/model.go`
+| 值 | 说明 |
+|----|------|
+| `nomad` | 默认值，查询 Nomad API |
+| `kubernetes` | 查询当前 Pod ServiceAccount 可访问的 K8s API |
+| `local` | 使用 `LOCAL_ORCHESTRATOR_ADDRESS` 指向单个 Orchestrator，主要用于本地开发 |
 
-```go
-// 新增服务发现配置
-type ServiceDiscoveryConfig struct {
-    // k8s, static, redis, nomad
-    Provider string `env:"SERVICE_DISCOVERY_PROVIDER" envDefault:"k8s"`
-    
-    // K8s 配置
-    K8sNamespace string `env:"K8S_NAMESPACE" envDefault:"e2b"`
-    
-    // 静态配置文件路径
-    StaticConfigPath string `env:"STATIC_CONFIG_PATH"`
-}
+### 3.2 K8s RBAC 要求
 
-type Config struct {
-    // ... 现有字段 ...
-    
-    ServiceDiscovery ServiceDiscoveryConfig
-}
-```
+API Pod 需要能 list/watch Pod，至少应授予当前 namespace 内 `pods` 的 `get`、`list`、`watch` 权限。服务发现会过滤未 ready、无 IP 的 Pod，并使用 Orchestrator Pod 的 host IP / Template Manager Pod 的 pod IP 建立连接。
 
-### 3.3 修改 Orchestrator 启动逻辑
+### 3.3 不再需要的旧改造
 
-修改文件：`packages/api/internal/orchestrator/orchestrator.go`
+早期文档建议新增 `K8sServiceDiscovery`、`ServiceDiscoveryConfig` 或 `IP_SLOT_STORAGE`。这些不再适用于 `2026.28`：
 
-```go
-func New(...) (*Orchestrator, error) {
-    // ... 现有代码 ...
-
-    // 修改节点发现逻辑
-    var nodeDiscovery Discovery
-    switch config.ServiceDiscovery.Provider {
-    case "k8s":
-        nodeDiscovery, err = discovery.NewK8sServiceDiscovery(
-            consts.LocalClusterID,
-            config.ServiceDiscovery.K8sNamespace,
-        )
-    case "static":
-        nodeDiscovery, err = discovery.NewStaticDiscovery(
-            config.ServiceDiscovery.StaticConfigPath,
-        )
-    case "redis":
-        nodeDiscovery, err = discovery.NewRedisDiscovery(redisClient)
-    default:
-        // 原有 Nomad 逻辑
-        nodeDiscovery = discovery.NewLocalDiscovery(...)
-    }
-
-    // ... 后续代码 ...
-}
-```
-
-### 3.4 修改 Consul 依赖
-
-修改文件：`packages/orchestrator/internal/sandbox/network/storage.go`
-
-```go
-type StorageType string
-
-const (
-    StorageTypeLocal StorageType = "local"
-    StorageTypeRedis StorageType = "redis"
-    StorageTypeConsul StorageType = "consul"  // 保留向后兼容
-)
-
-func newStorage(ctx context.Context, nodeID string, config Config) (Storage, error) {
-    storageType := GetEnv("IP_SLOT_STORAGE", "local")
-    
-    switch StorageType(storageType) {
-    case StorageTypeRedis:
-        redisURL := GetEnv("REDIS_URL", "")
-        if redisURL == "" {
-            return nil, fmt.Errorf("REDIS_URL is required for redis storage")
-        }
-        return NewStorageRedis(redisURL, nodeID, config)
-    case StorageTypeLocal:
-        return NewStorageLocal(ctx, config)
-    default:
-        // 原有 Consul 逻辑（向后兼容）
-        return NewStorageKV(nodeID, config)
-    }
-}
-```
+- 不要把 provider 值写成旧简称 `k8s`，当前枚举值是 `kubernetes`。
+- 不要新增旧式静态配置文件变量作为官方路径，当前本地静态模式使用 `LOCAL_ORCHESTRATOR_ADDRESS`。
+- Orchestrator IP slot 仍由现有网络配置控制；本文部署清单可使用 `USE_LOCAL_NAMESPACE_STORAGE=true` 做单节点/每节点独立分配，但这不是 API 服务发现配置。
 
 ---
 
@@ -328,19 +206,20 @@ metadata:
   namespace: e2b
 data:
   ENVIRONMENT: "prod"
-  SERVICE_DISCOVERY_PROVIDER: "k8s"
+  SERVICE_DISCOVERY_PROVIDER: "kubernetes"
   K8S_NAMESPACE: "e2b"
-  IP_SLOT_STORAGE: "local"
-  SANDBOX_STORAGE_BACKEND: "redis"
-  
+  K8S_ORCHESTRATOR_POD_LABEL_SELECTOR: "app.kubernetes.io/name=orchestrator"
+  K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR: "app.kubernetes.io/name=template-manager"
+  USE_LOCAL_NAMESPACE_STORAGE: "true"
+
   # 默认端口
   GRPC_PORT: "5008"
   PROXY_PORT: "3002"
   HEALTH_PORT: "3003"
-  
+
   # Nomad 配置（可选，保留向后兼容）
   NOMAD_ADDRESS: ""
-  
+
   # ClickHouse（可选）
   CLICKHOUSE_CONNECTION_STRING: ""
 ```
@@ -358,25 +237,28 @@ type: Opaque
 stringData:
   # 数据库
   POSTGRES_CONNECTION_STRING: "postgresql://e2b:password@postgres:5432/e2b?sslmode=disable"
-  
+
   # Redis
   REDIS_URL: "redis:6379"
-  
-  # 认证（可选）
-  SUPABASE_JWT_SECRETS: ""
+
+  # 认证 provider（可选）
+  AUTH_PROVIDER_CONFIG: '{"jwt":[]}'
   ADMIN_TOKEN: "your-admin-token"
-  
+  ORY_SDK_URL: "https://your-ory.example.com"
+  ORY_PROJECT_API_TOKEN: "your-ory-project-token"
+  ORY_ISSUER_URL: "https://your-ory.example.com"
+
   # Volume Token
   VOLUME_TOKEN_ISSUER: "e2b.your-domain.com"
   VOLUME_TOKEN_SIGNING_METHOD: "ES256"
   VOLUME_TOKEN_SIGNING_KEY: "ECDSA:base64-encoded-private-key"
   VOLUME_TOKEN_SIGNING_KEY_NAME: "prod-2024-01"
-  
+
   # 模板存储（GCP 或 AWS）
   TEMPLATE_BUCKET_NAME: "e2b-templates"
   BUILD_CACHE_BUCKET_NAME: "e2b-build-cache"
   GOOGLE_SERVICE_ACCOUNT_BASE64: ""
-  
+
   # Loki（可选）
   LOKI_URL: "http://loki:3100"
 ```
@@ -537,8 +419,10 @@ spec:
             secretKeyRef:
               name: e2b-secrets
               key: REDIS_URL
-        - name: API_GRPC_ADDRESS
+        - name: API_INTERNAL_GRPC_ADDRESS
           value: "e2b-api:5009"
+        - name: API_EDGE_GRPC_ADDRESS
+          value: "e2b-api:5109"
         resources:
           requests:
             cpu: "250m"
@@ -937,20 +821,22 @@ STORAGE_PROVIDER=GCPBucket  # 或 AWSBucket
 # === K8s 特定配置 ===
 
 # 服务发现
-SERVICE_DISCOVERY_PROVIDER=k8s
+SERVICE_DISCOVERY_PROVIDER=kubernetes
 K8S_NAMESPACE=e2b
+K8S_ORCHESTRATOR_POD_LABEL_SELECTOR=app.kubernetes.io/name=orchestrator
+K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR=app.kubernetes.io/name=template-manager
 
 # IP 槽位存储（避免使用 Consul）
-IP_SLOT_STORAGE=local
-
-# Sandbox 存储后端
-SANDBOX_STORAGE_BACKEND=redis
+USE_LOCAL_NAMESPACE_STORAGE=true
 
 # === 可选配置 ===
 
-# 认证
-SUPABASE_JWT_SECRETS=xxx
+# 认证 provider
+AUTH_PROVIDER_CONFIG='{"jwt":[]}'
 ADMIN_TOKEN=xxx
+ORY_SDK_URL=https://your-ory.example.com
+ORY_PROJECT_API_TOKEN=xxx
+ORY_ISSUER_URL=https://your-ory.example.com
 
 # Volume Token
 VOLUME_TOKEN_ISSUER=e2b.your-domain.com
@@ -1195,4 +1081,4 @@ kubectl logs -f deployment/e2b-api -n e2b
 
 ---
 
-*文档同步至上游 e2b-dev/infra 仓库 upstream/main (2026.17+13)*
+*文档同步至上游 e2b-dev/infra 仓库 tag 2026.28*

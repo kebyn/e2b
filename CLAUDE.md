@@ -111,7 +111,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 **API (`packages/api/`)** - REST API using Gin framework
 - Entry point: `main.go`
 - Core logic: `internal/handlers/store.go` (APIStore)
-- Authentication: JWT via Supabase in `internal/auth/`
+- Authentication: API keys, access tokens, and OIDC auth provider JWTs
 - OpenAPI code generation: `internal/api/*.gen.go`
 - Port: 80
 
@@ -130,6 +130,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 - Process management API: `/spec/process/process.proto`
 - Filesystem API: `/spec/filesystem/filesystem.proto`
 - Port: 49983
+- **Version in `pkg/version.go` must be bumped on every behavioral change** (not comments/docs-only changes)
 
 **Client Proxy (`packages/client-proxy/`)** - Edge routing layer
 - Service discovery via Consul
@@ -152,7 +153,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 
 ### Key Technologies
 
-- **Go 1.25.9** with workspaces (`go.work`)
+- **go 1.26.3** with workspaces (`go.work`)
 - **Firecracker** for microVM virtualization
 - **PostgreSQL** for primary data (sqlc for queries)
 - **ClickHouse** for analytics
@@ -216,8 +217,7 @@ go test -race -v -run TestCreateSandbox ./internal/handlers
 
 ### Environment Variables
 - Environment configs: `.env.{prod,staging,dev}`
-- GCP template: `.env.gcp.template`
-- AWS template: `.env.aws.template`
+- Template: `.env.template`
 - Switch: `make switch-env ENV=staging`
 - Secrets stored in GCP Secrets Manager (production)
 
@@ -264,7 +264,7 @@ Self-hosting is fully supported on GCP (AWS in progress). See `self-host.md` for
 
 Key steps:
 1. Create GCP project and configure quotas
-2. Create `.env.{prod,staging,dev}` from `.env.gcp.template`
+2. Create `.env.{prod,staging,dev}` from `.env.template`
 3. Run `make switch-env ENV=<env>`
 4. Run `make login-gcloud && make init`
 5. Run `make build-and-upload && make copy-public-builds`
