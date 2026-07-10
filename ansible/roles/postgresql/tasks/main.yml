@@ -79,19 +79,19 @@
     - migration_enabled | default(false)
   run_once: true
 
-- name: 从节点: 停止 PostgreSQL
+- name: "从节点: 停止 PostgreSQL"
   systemd:
     name: postgresql
     state: stopped
   when: pg_role == 'replica'
 
-- name: 从节点: 清空数据目录
+- name: "从节点: 清空数据目录"
   file:
     path: "/var/lib/postgresql/{{ postgres_version }}/main"
     state: absent
   when: pg_role == 'replica'
 
-- name: 从节点: 基础备份
+- name: "从节点: 基础备份"
   become_user: postgres
   shell: |
     pg_basebackup -h {{ hostvars[groups['postgresql'] | selectattr('pg_role', 'equalto', 'primary') | first]['ansible_host'] }} \
@@ -101,7 +101,7 @@
     PGPASSWORD: "{{ postgres_password }}"
   when: pg_role == 'replica'
 
-- name: 从节点: 启动 PostgreSQL
+- name: "从节点: 启动 PostgreSQL"
   systemd:
     name: postgresql
     state: started
