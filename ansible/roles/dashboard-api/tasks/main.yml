@@ -3,7 +3,7 @@
 
 - name: 复制 Dashboard API 二进制文件
   copy:
-    src: ../../packages/dashboard-api/bin/dashboard-api
+    src: "{{ playbook_dir }}/../../infra/packages/dashboard-api/bin/dashboard-api"
     dest: /usr/local/bin/dashboard-api
     owner: e2b
     group: e2b

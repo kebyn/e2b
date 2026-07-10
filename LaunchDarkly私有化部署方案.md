@@ -45,7 +45,7 @@
 E2B 当前使用 LaunchDarkly Server SDK（`go-server-sdk/v7`）。核心行为如下：
 
 ```go
-// packages/shared/pkg/featureflags/client.go
+// infra/packages/shared/pkg/featureflags/client.go
 func NewClient() (*Client, error) {
     if launchDarklyApiKey == "" {
         return NewClientWithDatasource(launchDarklyOfflineStore)
@@ -73,7 +73,7 @@ func NewClient() (*Client, error) {
 | 场景 | 当前能力 / 建议 | 继续阅读 |
 |------|------------------|----------|
 | 不需要动态灰度，只想无代码跑起来 | 不设置 `LAUNCH_DARKLY_API_KEY`，使用代码内 fallback 默认值 | [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航) |
-| 想确认每个 Flag 的默认值 | 以 `packages/shared/pkg/featureflags/flags.go` 为准 | [`FeatureFlags私有化部署方案.md` 的完整列表](./FeatureFlags私有化部署方案.md#2-feature-flags-完整列表) |
+| 想确认每个 Flag 的默认值 | 以 `infra/packages/shared/pkg/featureflags/flags.go` 为准 | [`FeatureFlags私有化部署方案.md` 的完整列表](./FeatureFlags私有化部署方案.md#2-feature-flags-完整列表) |
 | 想用 YAML / Unleash / 自建服务管理 Flag | 这是可选代码改造，不是 `2026.28` 现有无代码能力 | [`FeatureFlags私有化部署方案.md` 的私有化替代方案](./FeatureFlags私有化部署方案.md#4-私有化替代方案) |
 | 只查 `LAUNCH_DARKLY_API_KEY` 配置 | 看运行时配置参考 | [`启动参数详解.md`](./启动参数详解.md#阅读导航) |
 

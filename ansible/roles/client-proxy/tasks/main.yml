@@ -3,7 +3,7 @@
 
 - name: 复制 Client Proxy 二进制文件
   copy:
-    src: ../../packages/client-proxy/bin/client-proxy
+    src: "{{ playbook_dir }}/../../infra/packages/client-proxy/bin/client-proxy"
     dest: /usr/local/bin/client-proxy
     owner: e2b
     group: e2b

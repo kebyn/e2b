@@ -3,7 +3,7 @@
 
 - name: 复制 Orchestrator 二进制文件
   copy:
-    src: ../../packages/orchestrator/bin/orchestrator
+    src: "{{ playbook_dir }}/../../infra/packages/orchestrator/bin/orchestrator"
     dest: /usr/local/bin/orchestrator
     owner: e2b
     group: e2b
@@ -11,7 +11,7 @@
 
 - name: 复制 envd 二进制文件
   copy:
-    src: ../../packages/envd/bin/envd
+    src: "{{ playbook_dir }}/../../infra/packages/envd/bin/envd"
     dest: "{{ e2b_envd_path }}"
     owner: e2b
     group: e2b

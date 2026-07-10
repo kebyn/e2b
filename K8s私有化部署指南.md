@@ -167,10 +167,10 @@ Orchestrator 需要以下特权（用于管理 sandbox）：
 
 | 能力 | 当前代码 |
 |------|----------|
-| Orchestrator Pod 发现 | `packages/api/internal/orchestrator/discovery/kubernetes.go` |
-| Template Manager Pod 发现 | `packages/api/internal/clusters/discovery/kubernetes.go` |
-| Provider 选择 | `packages/api/internal/handlers/store.go` |
-| 配置模型 | `packages/api/internal/cfg/model.go` |
+| Orchestrator Pod 发现 | `infra/packages/api/internal/orchestrator/discovery/kubernetes.go` |
+| Template Manager Pod 发现 | `infra/packages/api/internal/clusters/discovery/kubernetes.go` |
+| Provider 选择 | `infra/packages/api/internal/handlers/store.go` |
+| 配置模型 | `infra/packages/api/internal/cfg/model.go` |
 
 ### 3.1 API 服务发现配置
 
