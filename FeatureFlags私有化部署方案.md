@@ -1,6 +1,8 @@
 # E2B Feature Flags 完整分析与部署方案
 
-> 本文档是 **Feature Flags 私有化部署主文档**：负责维护完整 Flag 清单、默认值、YAML/Unleash 方案与代码改造建议。
+> 本文档是 **Feature Flags 私有化部署主文档**：负责维护当前 Flag 清单、默认值、LaunchDarkly 离线行为与私有化替代方案。
+>
+> 基线：上游 `e2b-dev/infra` tag `2026.28`，以 `packages/shared/pkg/featureflags/flags.go` 为准。
 >
 > 相关文档：
 > - [`README.md`](./README.md)：仓库总入口与文档导航
@@ -12,857 +14,211 @@
 
 ## 1. 阅读导航
 
-### 如果你只想知道「现在不改代码怎么跑」
-- 看 [**6. 推荐方案**](#6-推荐方案)
-- 如果只是私有化且不需要动态灰度，优先用 **YAML 配置**
-- 如果什么都不配，代码会回退到 **LaunchDarkly 离线默认值**
+### 如果你只想知道“不配置 LaunchDarkly 能不能跑”
 
-### 如果你想知道「代码里到底有哪些 Flag」
-- 看 [**2. Feature Flags 完整列表**](#2-feature-flags-完整列表)
+可以跑。`LAUNCH_DARKLY_API_KEY` 为空时，`featureflags.NewClient()` 使用本地 offline store，并返回代码中注册的 fallback 值。
 
-### 如果你想接入开源替代品
-- 看 [**4. Unleash 配置方案**](#4-unleash-配置方案)
-- LaunchDarkly 专题说明见 [`LaunchDarkly私有化部署方案.md`](./LaunchDarkly私有化部署方案.md)
+### 如果你想知道“代码里到底有哪些 Flag”
+
+看 [2. Feature Flags 完整列表](#2-feature-flags-完整列表)。该清单按 `flags.go` 的 `NewBoolFlag`、`NewIntFlag`、`NewStringFlag`、`NewJSONFlag` 生成。
+
+### 如果你想接入 YAML / Unleash / 自建配置
+
+当前 `2026.28` 代码没有 `FEATURE_FLAGS_PROVIDER=yaml` 或 `FEATURE_FLAGS_PROVIDER=unleash` 这类 provider 选择环境变量。YAML/Unleash 是可选改造方案，不是现有无代码改动能力。
 
 ---
 
 ## 2. Feature Flags 完整列表
 
+默认值中的 `dev: true` 表示 `ENVIRONMENT=dev` 或 `ENVIRONMENT=local` 时为 `true`，生产环境通常为 `false`。
+
 ### 2.1 Boolean Flags
 
-> **注意**: 标记为 `dev: true` 的 Flags 在 `ENVIRONMENT=dev` 或 `ENVIRONMENT=local` 时为 `true`，在 `ENVIRONMENT=prod` 时为 `false`。
-
-| Flag 名称 | 默认值 | 说明 | 影响组件 |
-|-----------|--------|------|----------|
-| `sandbox-metrics-write` | **true** (固定) | 是否写入 ClickHouse 指标 | Orchestrator |
-| `sandbox-metrics-read` | **true** (固定) | 是否读取 ClickHouse 指标 | API |
-| `host-stats-enabled` | dev: true | 是否收集主机统计 | Orchestrator |
-| `use-nfs-for-snapshots` | dev: true | 使用 NFS 存储快照 | Orchestrator |
-| `use-nfs-for-templates` | dev: true | 使用 NFS 存储模板 | Orchestrator |
-| `write-to-cache-on-writes` | false | 写入时同时写入缓存 | Orchestrator |
-| `use-nfs-for-building-templates` | dev: true | 构建模板时使用 NFS | Orchestrator |
-| `best-of-k-can-fit` | true | BestOfK 算法是否检查资源可用性 | API |
-| `best-of-k-too-many-starting` | false | 是否限制并发启动数 | API |
-| `edge-provided-sandbox-metrics` | false | 使用 Edge 提供的指标 | API |
-| `create-storage-cache-spans` | dev: true | 创建存储缓存追踪 span | Orchestrator |
-| `sandbox-auto-resume` | dev: true | Sandbox 自动恢复 | API/Orchestrator |
-| `peer-to-peer-chunk-transfer` | false | 启用 P2P 块传输 | Orchestrator |
-| `peer-to-peer-async-checkpoint` | false | 异步 checkpoint 上传 | Orchestrator |
-| `can-use-persistent-volumes` | dev: true | 是否允许持久卷 | API |
-| `execution-metrics-on-webhooks` | false | Webhook 包含执行指标 | Orchestrator |
-| `sandbox-label-based-scheduling` | false | 基于标签的调度 | API |
-| `sandbox-placement-optimistic-resource-accounting` | false | 乐观资源计算 | API |
+| Flag 名称 | 默认值 | 说明 |
+|-----------|--------|------|
+| `use-nfs-for-snapshots` | dev: true | 快照读取/写入使用 NFS cache |
+| `use-nfs-for-templates` | dev: true | 模板读取/写入使用 NFS cache |
+| `write-to-cache-on-writes` | false | 写入时同时写缓存 |
+| `use-nfs-for-building-templates` | dev: true | 构建模板时使用 NFS cache |
+| `create-storage-cache-spans` | dev: true | 创建存储缓存 trace span |
+| `orch-accepts-combined-host` | false | Orchestrator 是否接受 combined host |
+| `storage-soft-delete-check` | false | 读取 storage-index soft-delete tombstone |
+| `storage-soft-delete-enforce` | false | soft-deleted 对象读取失败关闭 |
+| `use-memfd` | true | Firecracker guest memory 使用 memfd |
+| `memfd-background-copy` | true | memfd snapshot cache 后台复制 |
+| `peer-to-peer-chunk-transfer` | false | 启用 P2P chunk routing |
+| `peer-to-peer-async-checkpoint` | false | checkpoint 异步上传 |
+| `can-use-persistent-volumes` | dev: true | 是否允许持久卷 |
+| `sandbox-label-based-scheduling` | false | Sandbox 基于标签调度 |
+| `sandbox-placement-optimistic-resource-accounting` | false | 乐观资源记账 |
+| `free-page-reporting` | false | Firecracker free page reporting |
+| `freeze-user-cgroup` | dev: true | pause 前 freeze 用户 cgroup |
+| `collapse-envd-heap` | false | pause 前让 envd 折叠匿名堆页 |
+| `volume-fallback-to-unmatched-nodes` | true | volume 调度允许回退到未匹配节点 |
+| `sandbox-volume-label-based-scheduling` | false | 按 volume 类型标签过滤节点 |
+| `network-transform-rules` | dev: true | 允许网络规则 transform |
+| `byop-proxy-enabled` | dev: true | 启用 BYOP egress proxy 配置 |
+| `v4-header-for-uncompressed` | false | 未压缩上传使用 V4 header |
+| `header-v5-write` | false | pause 写 V5 header |
+| `resume-origin-node-remap` | false | resume 超时后重映射 origin node |
+| `expiration-index-healer` | true | Redis 过期索引 healer |
+| `disable-e2b-access-token-provisioning` | false | 停止签发旧 E2B access token |
+| `disable-e2b-access-token-auth` | false | 停止接受旧 E2B access token |
+| `nbd-async-write-zeroes` | false | NBD WRITE_ZEROES/TRIM 异步处理 |
+| `pause-resume-prefetch-harvest` | false | pause 后做 throwaway warm resume 采样 |
+| `pause-resume-prefetch-consume` | false | 将采样 mapping 写入 pause artifact |
+| `clickhouse-write-fanout` | false | 启用 ClickHouse 多写端点 fan-out |
 
 ### 2.2 Integer Flags
 
-| Flag 名称 | 默认值 | 单位 | 说明 | 影响组件 |
-|-----------|--------|------|------|----------|
-| `max-sandboxes-per-node` | 200 | 个 | 每节点最大 Sandbox 数 | Orchestrator |
-| `gcloud-concurrent-upload-limit` | 8 | 个 | GCS 并发上传数 | Orchestrator |
-| `gcloud-max-tasks` | 16 | 个 | GCS 最大任务数 | Orchestrator |
-| `clickhouse-batcher-max-batch-size` | 100 | 条 | ClickHouse 批处理大小 | API |
-| `clickhouse-batcher-max-delay` | 1000 | ms | ClickHouse 批处理延迟 | API |
-| `clickhouse-batcher-queue-size` | 1000 | 条 | ClickHouse 队列大小 | API |
-| `best-of-k-sample-size` | 3 | 个 | BestOfK 采样数 (K) | API |
-| `best-of-k-max-overcommit` | 400 | % | 最大超卖比例 (R=4) | API |
-| `best-of-k-alpha` | 50 | % | 当前使用权重 (Alpha=0.5) | API |
-| `envd-init-request-timeout-milliseconds` | **50** | ms | envd 初始化超时 | Orchestrator |
-| `host-stats-sampling-interval` | 5000 | ms | 主机统计采样间隔 | Orchestrator |
-| `max-cache-writer-concurrency` | 10 | 个 | 缓存写入并发数 | Orchestrator |
-| `build-cache-max-usage-percentage` | 85 | % | 缓存磁盘最大使用率 | Orchestrator |
-| `build-provision-version` | 0 | - | 构建配置版本 | Orchestrator |
-| `nbd-connections-per-device` | **1** | 个 | NBD 设备连接数 | Orchestrator |
-| `memory-prefetch-max-fetch-workers` | 16 | 个 | 内存预取最大抓取 worker | Orchestrator |
-| `memory-prefetch-max-copy-workers` | 8 | 个 | 内存预取最大复制 worker | Orchestrator |
-| `tcpfirewall-max-connections-per-sandbox` | -1 | 个 | TCP 防火墙每 Sandbox 连接数 (-1=无限制) | Orchestrator |
-| `sandbox-max-incoming-connections` | -1 | 个 | HTTP 代理最大连接数 (-1=无限制) | API |
-| `build-base-rootfs-size-limit-mb` | 25000 | MB | 基础 rootfs 大小限制 | Orchestrator |
-| `minimum-autoresume-timeout` | 300 | s | 最小自动恢复超时 | API |
-| `max-concurrent-snapshot-upserts` | 0 | 个 | 并发 snapshot upsert 数 (0=无限制) | API |
-| `max-concurrent-sandbox-list-queries` | 0 | 个 | 并发 sandbox 列表查询数 (0=无限制) | API |
-| `max-concurrent-snapshot-build-queries` | 0 | 个 | 并发 snapshot build 查询数 (0=无限制) | API |
+| Flag 名称 | 默认值 | 单位 | 说明 |
+|-----------|--------|------|------|
+| `collapse-envd-heap-timeout-ms` | 10000 | ms | envd heap collapse 超时 |
+| `max-sandboxes-per-node` | 200 | 个 | 每节点最大 sandbox 数 |
+| `gcloud-concurrent-upload-limit` | 8 | 个 | 存储上传并发限制；历史 key 名保留 gcloud 前缀 |
+| `gcloud-max-tasks` | 16 | 个 | 存储上传最大任务数 |
+| `clickhouse-batcher-max-batch-size` | 100 | 条 | ClickHouse batch 大小 |
+| `clickhouse-batcher-max-delay` | 1000 | ms | ClickHouse batch 延迟 |
+| `clickhouse-batcher-queue-size` | 1000 | 条 | ClickHouse batch 队列 |
+| `best-of-k-sample-size` | 3 | 个 | Best-of-K 采样数量 |
+| `best-of-k-max-overcommit` | 400 | % | 最大超卖比例 |
+| `best-of-k-alpha` | 50 | % | 当前使用权重 |
+| `envd-init-request-timeout-milliseconds` | 50 | ms | envd init request 超时 |
+| `envd-timeout-milliseconds` | `ENVD_TIMEOUT` 或 10000 | ms | resume 等待 envd 超时 |
+| `guest-sync-timeout-milliseconds` | 0 | ms | filesystem-only snapshot 强制 guest sync 超时；0 为按 RAM 推导 |
+| `max-cache-writer-concurrency` | 10 | 个 | cache writer 并发数 |
+| `build-cache-max-usage-percentage` | 85 | % | build cache 磁盘使用阈值 |
+| `build-provision-version` | 0 | - | build provision 版本 |
+| `nbd-connections-per-device` | 1 | 个 | 每个 NBD device 的连接数 |
+| `memory-prefetch-max-fetch-workers` | 16 | 个 | memory prefetch fetch workers |
+| `memory-prefetch-max-copy-workers` | 8 | 个 | memory prefetch copy workers |
+| `pause-resume-prefetch-harvest-timeout-ms` | 15000 | ms | throwaway harvest resume 超时 |
+| `tcpfirewall-max-connections-per-sandbox` | -1 | 个 | TCP firewall 每 sandbox 最大连接数；-1 不限制 |
+| `sandbox-max-incoming-connections` | -1 | 个 | HTTP proxy 每 sandbox 最大入站连接数；-1 不限制 |
+| `build-base-rootfs-size-limit-mb` | 25000 | MB | OCI base rootfs 大小上限 |
+| `minimum-autoresume-timeout` | 300 | 秒 | 最小 autoresume timeout |
+| `build-reserved-disk-space-mb` | 256 | MB | guest root 保留磁盘空间 |
+| `max-starting-instances-per-node` | 3 | 个 | 每节点并发 start/resume 上限 |
+| `max-concurrent-evictions` | 256 | 个 | API sandbox eviction 并发上限 |
+| `max-concurrent-snapshot-upserts` | 0 | 个 | snapshot upsert 并发上限；0/负数不限制 |
+| `max-concurrent-sandbox-list-queries` | 0 | 个 | sandbox list 查询并发上限；0/负数不限制 |
+| `max-concurrent-snapshot-build-queries` | 0 | 个 | snapshot build 查询并发上限；0/负数不限制 |
+| `min-chunker-read-size-kb` | 16 | KB | chunker 最小读批次 |
+| `max-parallel-build-read-segments` | 1 | 个 | fragmented build read 并发段数；1 以下保持串行 |
 
 ### 2.3 String Flags
 
-| Flag 名称 | 默认值 | 说明 | 影响组件 |
-|-----------|--------|------|----------|
-| `build-firecracker-version` | **v1.12.1_210cbac** | 构建使用的 Firecracker 版本 | Orchestrator |
-| `build-io-engine` | Sync | IO 引擎 (Sync/Async) | Orchestrator |
-| `default-persistent-volume-type` | "" | 默认持久卷类型 | API |
+| Flag 名称 | 默认值 | 说明 |
+|-----------|--------|------|
+| `build-firecracker-version` | `DEFAULT_FIRECRACKER_VERSION` 或 `v1.14.1_431f1fc` | 构建使用的 Firecracker 版本 |
+| `build-kernel-version` | `DEFAULT_KERNEL_VERSION` 或 `vmlinux-6.1.158` | 构建使用的内核版本 |
+| `build-io-engine` | `Sync` | Firecracker block IO engine |
+| `default-persistent-volume-type` | `""` | 默认持久卷类型 |
+| `clickhouse-read-endpoint` | `""` | ClickHouse 读取端点选择；空字符串使用单一 DSN |
 
 ### 2.4 JSON Flags
 
-| Flag 名称 | 默认值 | 说明 | 影响组件 |
-|-----------|--------|------|----------|
-| `clean-nfs-cache` | null | 清理 NFS 缓存命令 | Orchestrator |
-| `rate-limit-config` | null | 按团队的速率限制配置 | API |
-| `preferred-build-node` | null | 优先构建节点 | API |
-| `firecracker-versions` | {"v1.10":"v1.10.1_30cbb07","v1.12":"v1.12.1_210cbac"} | Firecracker 版本映射 | Orchestrator |
-| `tracked-templates-for-metrics` | {"base":true,"code-interpreter-v1":true,...} | 指标跟踪的模板列表 | Orchestrator |
-| `chunker-config` | {"useStreaming":false,"minReadBatchSizeKB":16} | 分块器配置 | Orchestrator |
-| `tcpfirewall-egress-throttle-config` | {"ops":{"bucketSize":-1},"bandwidth":{"bucketSize":-1}} | 出口流量限制 | Orchestrator |
-| `block-drive-throttle-config` | {"ops":{"bucketSize":-1},"bandwidth":{"bucketSize":-1}} | 磁盘限速 | Orchestrator |
-
-### 2.4 上游变更说明（2026.17+13）
-
-> **构造函数公开化**：自上游 `upstream/main` 起，Feature Flag 构造函数已从私有变为公开：
-> - `newBoolFlag` → `NewBoolFlag`
-> - `newIntFlag` → `NewIntFlag`
-> - `newStringFlag` → `NewStringFlag`
-> - `newJSONFlag` → `NewJSONFlag`
->
-> 此变更简化了私有化部署中自定义 Provider 的实现，无需修改上游代码即可创建自定义 Flag。
+| Flag 名称 | 默认值 | 说明 |
+|-----------|--------|------|
+| `clean-nfs-cache` | `null` | 清理 NFS cache 配置 |
+| `rate-limit-config` | `null` | API route rate limit 覆盖 |
+| `memfile-diff-dedup` | `{"enabled":false,...}` | memfile diff 4KiB page dedup 配置 |
+| `guest-pause-reclaim` | `null` | pause 前 sync/drop_caches/compact_memory/fstrim 分步预算 |
+| `free-page-hinting-config` | `null` | virtio-balloon free-page-hinting 配置 |
+| `preferred-build-node` | `null` | preferred build node 信息 |
+| `firecracker-versions` | `{"v1.10":"v1.10.1_30cbb07","v1.12":"v1.12.1_210cbac","v1.14":"v1.14.1_431f1fc"}` | Firecracker minor version 到构建版本映射 |
+| `tracked-templates-for-metrics` | `{"base":true,"code-interpreter-v1":true,"code-interpreter-beta":true,"desktop":true}` | 指标跟踪模板集合 |
+| `compress-config` | `{"compressBuilds":false,...}` | build artifact 压缩配置 |
+| `tcpfirewall-egress-throttle-config` | disabled buckets | Firecracker 网卡 egress token bucket |
+| `block-drive-throttle-config` | disabled buckets | Firecracker rootfs drive token bucket |
 
 ---
 
-## 3. YAML 配置方案
+## 3. 当前 LaunchDarkly 行为
 
-### 3.1 配置文件格式
+当前代码只内置 LaunchDarkly provider 和本地 offline store：
+
+| 场景 | 行为 |
+|------|------|
+| 设置 `LAUNCH_DARKLY_API_KEY` | 使用 LaunchDarkly Server SDK 连接在线服务 |
+| 不设置 `LAUNCH_DARKLY_API_KEY` | 使用代码内注册的 offline store fallback |
+| CLI/测试显式调用 override | 仅影响 offline store |
+
+因此，私有化部署如果不需要动态灰度，最小方案是 **不配置 `LAUNCH_DARKLY_API_KEY`**，直接使用 fallback。
+
+---
+
+## 4. 私有化替代方案
+
+### 4.1 零改代码：使用 offline fallback
+
+这是当前最稳妥方案：
+
+```bash
+# 不设置该变量，或显式留空
+unset LAUNCH_DARKLY_API_KEY
+```
+
+优点：
+
+- 不需要部署 LaunchDarkly 或替代服务
+- 不需要修改代码
+- fallback 值与 `flags.go` 保持一致
+
+限制：
+
+- 不能运行时灰度
+- 不能按 team/template/cluster 动态覆盖
+
+### 4.2 YAML / 文件配置
+
+这是可选改造，不是 `2026.28` 当前能力。若要实现，建议只在 `packages/shared/pkg/featureflags` 内增加 provider 抽象，并保持现有 `BoolFlag`、`IntFlag`、`StringFlag`、`JSONFlag` 调用点不变。
+
+配置文件应直接使用第 2 节的 flag key。例如：
 
 ```yaml
-# /etc/e2b/feature-flags.yaml
-
-# ============================================================
-# E2B Feature Flags 配置
-# ============================================================
-
-# Boolean Flags
 boolean_flags:
-  sandbox-metrics-write: true
-  sandbox-metrics-read: true
-  host-stats-enabled: true
-  use-nfs-for-snapshots: false
-  use-nfs-for-templates: false
-  write-to-cache-on-writes: false
-  use-nfs-for-building-templates: false
-  best-of-k-can-fit: true
-  best-of-k-too-many-starting: false
-  edge-provided-sandbox-metrics: false
-  create-storage-cache-spans: false
-  sandbox-auto-resume: true
-  sandbox-catalog-local-cache: true
+  use-memfd: true
+  memfd-background-copy: true
   peer-to-peer-chunk-transfer: false
-  peer-to-peer-async-checkpoint: false
-  can-use-persistent-volumes: true
-  execution-metrics-on-webhooks: false
-  sandbox-label-based-scheduling: false
+  disable-e2b-access-token-auth: false
 
-# Integer Flags
 integer_flags:
   max-sandboxes-per-node: 200
-  gcloud-concurrent-upload-limit: 8
-  gcloud-max-tasks: 16
-  clickhouse-batcher-max-batch-size: 100
-  clickhouse-batcher-max-delay: 1000
-  clickhouse-batcher-queue-size: 1000
-  best-of-k-sample-size: 3
-  best-of-k-max-overcommit: 400
-  best-of-k-alpha: 50
   envd-init-request-timeout-milliseconds: 50
-  host-stats-sampling-interval: 5000
-  max-cache-writer-concurrency: 10
-  build-cache-max-usage-percentage: 85
-  build-provision-version: 0
-  nbd-connections-per-device: 1            # 注意：默认值是 1
-  memory-prefetch-max-fetch-workers: 16
-  memory-prefetch-max-copy-workers: 8
-  tcpfirewall-max-connections-per-sandbox: -1
-  sandbox-max-incoming-connections: -1
-  build-base-rootfs-size-limit-mb: 25000
-  max-concurrent-snapshot-upserts: 0
-  max-concurrent-sandbox-list-queries: 0
-  max-concurrent-snapshot-build-queries: 0
+  max-starting-instances-per-node: 3
 
-# String Flags
 string_flags:
-  build-firecracker-version: "v1.12.1_210cbac"  # 注意：版本号后缀
-  build-io-engine: "Sync"
-  default-persistent-volume-type: ""
+  build-firecracker-version: "v1.14.1_431f1fc"
+  build-kernel-version: "vmlinux-6.1.158"
 
-# JSON Flags
 json_flags:
-  firecracker-versions:
-    v1.10: "v1.10.1_30cbb07"
-    v1.12: "v1.12.1_210cbac"
-
-  tracked-templates-for-metrics:
-    base: true
-    code-interpreter-v1: true
-    code-interpreter-beta: true
-    desktop: true
-
-  chunker-config:
-    useStreaming: false
-    minReadBatchSizeKB: 16
-
-  tcpfirewall-egress-throttle-config:
-    ops:
-      bucketSize: -1
-      oneTimeBurst: 0
-      refillTimeMs: 1000
-    bandwidth:
-      bucketSize: -1
-      oneTimeBurst: 0
-      refillTimeMs: 1000
-
-# ============================================================
-# 按维度覆盖 (可选)
-# ============================================================
-overrides:
-  # 按团队覆盖
-  team:
-    "team-uuid-1":
-      max-sandboxes-per-node: 500
-      sandbox-auto-resume: true
-    "team-uuid-2":
-      max-sandboxes-per-node: 100
-
-  # 按模板覆盖
-  template:
-    "template-uuid-1":
-      sandbox-metrics-write: true
-      host-stats-sampling-interval: 1000
-
-  # 按集群覆盖
-  cluster:
-    "cluster-uuid-1":
-      nbd-connections-per-device: 8
-      memory-prefetch-max-fetch-workers: 32
+  memfile-diff-dedup:
+    enabled: false
+    bestEffort: false
+    directIO: false
+  guest-pause-reclaim: null
 ```
 
-### 3.2 配置加载代码
+### 4.3 Unleash / 自建服务
 
-```go
-// packages/shared/pkg/featureflags/yaml_provider.go
+也是可选改造，不是当前无代码配置项。实现时要注意：
 
-package featureflags
-
-import (
-    "context"
-    "os"
-    "sync"
-
-    "gopkg.in/yaml.v3"
-    "github.com/launchdarkly/go-sdk-common/v3/ldcontext"
-    "github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-)
-
-type YAMLFlagsConfig struct {
-    BooleanFlags map[string]bool                   `yaml:"boolean_flags"`
-    IntegerFlags map[string]int                    `yaml:"integer_flags"`
-    StringFlags  map[string]string                 `yaml:"string_flags"`
-    JSONFlags    map[string]map[string]interface{}  `yaml:"json_flags"`
-    Overrides    OverridesConfig                    `yaml:"overrides"`
-}
-
-type OverridesConfig struct {
-    Team     map[string]map[string]interface{} `yaml:"team"`
-    Template map[string]map[string]interface{} `yaml:"template"`
-    Cluster  map[string]map[string]interface{} `yaml:"cluster"`
-}
-
-type YAMLProvider struct {
-    config YAMLFlagsConfig
-    mu     sync.RWMutex
-}
-
-func NewYAMLProvider(path string) (*YAMLProvider, error) {
-    data, err := os.ReadFile(path)
-    if err != nil {
-        return nil, err
-    }
-
-    var config YAMLFlagsConfig
-    if err := yaml.Unmarshal(data, &config); err != nil {
-        return nil, err
-    }
-
-    return &YAMLProvider{config: config}, nil
-}
-
-func (p *YAMLProvider) GetBool(key string, fallback bool) bool {
-    p.mu.RLock()
-    defer p.mu.RUnlock()
-
-    if val, ok := p.config.BooleanFlags[key]; ok {
-        return val
-    }
-    return fallback
-}
-
-func (p *YAMLProvider) GetInt(key string, fallback int) int {
-    p.mu.RLock()
-    defer p.mu.RUnlock()
-
-    if val, ok := p.config.IntegerFlags[key]; ok {
-        return val
-    }
-    return fallback
-}
-
-func (p *YAMLProvider) GetString(key string, fallback string) string {
-    p.mu.RLock()
-    defer p.mu.RUnlock()
-
-    if val, ok := p.config.StringFlags[key]; ok {
-        return val
-    }
-    return fallback
-}
-
-func (p *YAMLProvider) GetJSON(key string, fallback ldvalue.Value) ldvalue.Value {
-    p.mu.RLock()
-    defer p.mu.RUnlock()
-
-    if val, ok := p.config.JSONFlags[key]; ok {
-        return ldvalue.FromJSONMarshal(val)
-    }
-    return fallback
-}
-
-// Reload 重新加载配置文件
-func (p *YAMLProvider) Reload(path string) error {
-    data, err := os.ReadFile(path)
-    if err != nil {
-        return err
-    }
-
-    var config YAMLFlagsConfig
-    if err := yaml.Unmarshal(data, &config); err != nil {
-        return err
-    }
-
-    p.mu.Lock()
-    p.config = config
-    p.mu.Unlock()
-
-    return nil
-}
-```
-
-### 3.3 环境变量
-
-```bash
-# 启用 YAML 配置
-export FEATURE_FLAGS_PROVIDER=yaml
-export FEATURE_FLAGS_CONFIG=/etc/e2b/feature-flags.yaml
-```
+- bool flag 可以直接映射到开关。
+- int/string flag 需要通过 variant payload 或自建 typed API 表达。
+- JSON flag 需要保留 JSON value 语义，不能降级成字符串拼接。
+- LaunchDarkly context 当前包含 team、user、cluster、template、volume、sandbox、service、compress use case 等维度；替代品需要明确支持哪些维度。
 
 ---
 
-## 4. Unleash 配置方案
+## 5. 推荐方案
 
-### 4.1 Docker Compose 部署
-
-```yaml
-# docker-compose.unleash.yml
-
-version: '3.8'
-
-services:
-  unleash:
-    image: unleashorg/unleash-server:latest
-    container_name: unleash
-    ports:
-      - "4242:4242"
-    environment:
-      DATABASE_URL: postgres://unleash:${UNLEASH_DB_PASSWORD}@postgres:5432/unleash
-      DATABASE_SSL: "false"
-      LOG_LEVEL: info
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:17-alpine
-    container_name: unleash-db
-    environment:
-      POSTGRES_USER: unleash
-      POSTGRES_PASSWORD: ${UNLEASH_DB_PASSWORD}
-      POSTGRES_DB: unleash
-    volumes:
-      - unleash_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U unleash"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-volumes:
-  unleash_data:
-```
-
-```bash
-# .env 文件
-UNLEASH_DB_PASSWORD=your-secure-password
-```
-
-```bash
-# 启动
-docker-compose -f docker-compose.unleash.yml up -d
-
-# 访问 UI
-# http://localhost:4242
-# 默认账号: admin / unleash4all
-```
-
-### 4.2 Unleash Flags 配置
-
-```bash
-#!/bin/bash
-# create-flags.sh - 批量创建 Unleash Feature Flags
-
-UNLEASH_URL="http://localhost:4242"
-API_TOKEN="default:development.unleash-insecure-api-token"
-
-# 创建项目
-curl -X POST "${UNLEASH_URL}/api/admin/projects" \
-  -H "Authorization: ${API_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "e2b",
-    "name": "E2B Platform"
-  }'
-
-# ============================================================
-# Boolean Flags
-# ============================================================
-
-boolean_flags=(
-  "sandbox-metrics-write:Sandbox Metrics Write"
-  "sandbox-metrics-read:Sandbox Metrics Read"
-  "host-stats-enabled:Host Stats Enabled"
-  "use-nfs-for-snapshots:Use NFS for Snapshots"
-  "use-nfs-for-templates:Use NFS for Templates"
-  "write-to-cache-on-writes:Write to Cache on Writes"
-  "use-nfs-for-building-templates:Use NFS for Building Templates"
-  "best-of-k-can-fit:Best of K Can Fit"
-  "best-of-k-too-many-starting:Best of K Too Many Starting"
-  "edge-provided-sandbox-metrics:Edge Provided Sandbox Metrics"
-  "create-storage-cache-spans:Create Storage Cache Spans"
-  "sandbox-auto-resume:Sandbox Auto Resume"
-  "sandbox-catalog-local-cache:Sandbox Catalog Local Cache"
-  "peer-to-peer-chunk-transfer:Peer to Peer Chunk Transfer"
-  "peer-to-peer-async-checkpoint:Peer to Peer Async Checkpoint"
-  "can-use-persistent-volumes:Can Use Persistent Volumes"
-  "execution-metrics-on-webhooks:Execution Metrics on Webhooks"
-  "sandbox-label-based-scheduling:Sandbox Label Based Scheduling"
-)
-
-for item in "${boolean_flags[@]}"; do
-  IFS=':' read -r key description <<< "$item"
-
-  curl -X POST "${UNLEASH_URL}/api/admin/features" \
-    -H "Authorization: ${API_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"name\": \"${key}\",
-      \"description\": \"${description}\",
-      \"type\": \"release\",
-      \"project\": \"e2b\",
-      \"stale\": false,
-      \"impressionData\": false
-    }"
-
-  echo "Created: ${key}"
-done
-
-# ============================================================
-# Integer Flags (使用 Variant)
-# ============================================================
-
-integer_flags=(
-  "max-sandboxes-per-node:200"
-  "gcloud-concurrent-upload-limit:8"
-  "gcloud-max-tasks:16"
-  "clickhouse-batcher-max-batch-size:100"
-  "clickhouse-batcher-max-delay:1000"
-  "clickhouse-batcher-queue-size:1000"
-  "best-of-k-sample-size:3"
-  "best-of-k-max-overcommit:400"
-  "best-of-k-alpha:50"
-  "envd-init-request-timeout-milliseconds:50"    # 注意：是 50，不是 500
-  "host-stats-sampling-interval:5000"
-  "max-cache-writer-concurrency:10"
-  "build-cache-max-usage-percentage:85"
-  "build-provision-version:0"
-  "nbd-connections-per-device:1"                  # 注意：是 1，不是 4
-  "memory-prefetch-max-fetch-workers:16"
-  "memory-prefetch-max-copy-workers:8"
-  "tcpfirewall-max-connections-per-sandbox:-1"
-  "sandbox-max-incoming-connections:-1"
-  "build-base-rootfs-size-limit-mb:25000"
-  "max-concurrent-snapshot-upserts:0"
-  "max-concurrent-sandbox-list-queries:0"
-  "max-concurrent-snapshot-build-queries:0"
-)
-
-for item in "${integer_flags[@]}"; do
-  IFS=':' read -r key default <<< "$item"
-
-  curl -X POST "${UNLEASH_URL}/api/admin/features" \
-    -H "Authorization: ${API_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"name\": \"${key}\",
-      \"description\": \"Integer flag with default: ${default}\",
-      \"type\": \"release\",
-      \"project\": \"e2b\",
-      \"stale\": false,
-      \"impressionData\": false
-    }"
-
-  # 添加 Variant
-  curl -X POST "${UNLEASH_URL}/api/admin/features/${key}/variants" \
-    -H "Authorization: ${API_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"name\": \"${key}-variant\",
-      \"weight\": 1000,
-      \"weightType\": \"fix\",
-      \"stickiness\": \"default\",
-      \"payload\": {
-        \"type\": \"string\",
-        \"value\": \"${default}\"
-      }
-    }"
-
-  echo "Created: ${key} (default: ${default})"
-done
-
-# ============================================================
-# String Flags
-# ============================================================
-
-string_flags=(
-  "build-firecracker-version:v1.12.1_210cbac"  # 注意：版本号后缀
-  "build-io-engine:Sync"
-  "default-persistent-volume-type:"
-)
-
-for item in "${string_flags[@]}"; do
-  IFS=':' read -r key default <<< "$item"
-
-  curl -X POST "${UNLEASH_URL}/api/admin/features" \
-    -H "Authorization: ${API_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"name\": \"${key}\",
-      \"description\": \"String flag with default: ${default}\",
-      \"type\": \"release\",
-      \"project\": \"e2b\",
-      \"stale\": false,
-      \"impressionData\": false
-    }"
-
-  # 添加 Variant
-  curl -X POST "${UNLEASH_URL}/api/admin/features/${key}/variants" \
-    -H "Authorization: ${API_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"name\": \"${key}-variant\",
-      \"weight\": 1000,
-      \"weightType\": \"fix\",
-      \"stickiness\": \"default\",
-      \"payload\": {
-        \"type\": \"string\",
-        \"value\": \"${default}\"
-      }
-    }"
-
-  echo "Created: ${key} (default: ${default})"
-done
-
-echo "All flags created successfully!"
-```
-
-### 4.3 Unleash 客户端代码
-
-```go
-// packages/shared/pkg/featureflags/unleash_provider.go
-
-package featureflags
-
-import (
-    "context"
-    "strconv"
-
-    unleash "github.com/Unleash/unleash-client-go/v4"
-    "github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-)
-
-type UnleashProvider struct {
-    client *unleash.Client
-}
-
-func NewUnleashProvider(appName, url, token string) (*UnleashProvider, error) {
-    client, err := unleash.NewClient(unleash.Config{
-        AppName: appName,
-        Url:     url,
-        CustomHeaders: map[string]string{
-            "Authorization": token,
-        },
-        RefreshInterval: 15, // 15 秒刷新一次
-    })
-    if err != nil {
-        return nil, err
-    }
-
-    return &UnleashProvider{client: client}, nil
-}
-
-func (p *UnleashProvider) GetBool(key string, fallback bool) bool {
-    return p.client.IsEnabled(key, unleash.WithFallback(fallback))
-}
-
-func (p *UnleashProvider) GetInt(key string, fallback int) int {
-    variant := p.client.GetVariant(key, unleash.WithVariantFallback(&unleash.Variant{
-        Payload: unleash.Payload{
-            Type:  "string",
-            Value: strconv.Itoa(fallback),
-        },
-    }))
-
-    if variant.Payload.Type == "string" {
-        val, err := strconv.Atoi(variant.Payload.Value)
-        if err == nil {
-            return val
-        }
-    }
-
-    return fallback
-}
-
-func (p *UnleashProvider) GetString(key string, fallback string) string {
-    variant := p.client.GetVariant(key, unleash.WithVariantFallback(&unleash.Variant{
-        Payload: unleash.Payload{
-            Type:  "string",
-            Value: fallback,
-        },
-    }))
-
-    if variant.Payload.Type == "string" {
-        return variant.Payload.Value
-    }
-
-    return fallback
-}
-
-func (p *UnleashProvider) GetJSON(key string, fallback ldvalue.Value) ldvalue.Value {
-    variant := p.client.GetVariant(key, unleash.WithVariantFallback(&unleash.Variant{
-        Payload: unleash.Payload{
-            Type:  "json",
-            Value: fallback.JSONString(),
-        },
-    }))
-
-    if variant.Payload.Type == "json" {
-        return ldvalue.Parse(variant.Payload.Value)
-    }
-
-    return fallback
-}
-
-func (p *UnleashProvider) Close() error {
-    p.client.Close()
-    return nil
-}
-```
-
-### 4.4 Unleash 按团队/模板灰度
-
-```bash
-# 创建团队 Context
-curl -X POST "${UNLEASH_URL}/api/admin/context" \
-  -H "Authorization: ${API_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "team",
-    "description": "Team context for targeting",
-    "legalValues": ["team-uuid-1", "team-uuid-2"],
-    "stickiness": true
-  }'
-
-# 创建模板 Context
-curl -X POST "${UNLEASH_URL}/api/admin/context" \
-  -H "Authorization: ${API_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "template",
-    "description": "Template context for targeting",
-    "legalValues": ["template-uuid-1", "template-uuid-2"],
-    "stickiness": true
-  }'
-
-# 为特定团队启用 Flag
-curl -X POST "${UNLEASH_URL}/api/admin/features/max-sandboxes-per-node/environments/default/strategies" \
-  -H "Authorization: ${API_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "flexibleRollout",
-    "constraints": [
-      {
-        "contextName": "team",
-        "operator": "IN",
-        "values": ["team-uuid-1", "team-uuid-2"]
-      }
-    ],
-    "parameters": {
-      "rollout": "100",
-      "stickiness": "default",
-      "groupId": "max-sandboxes-per-node"
-    },
-    "variants": [
-      {
-        "name": "high-limit",
-        "weight": 1000,
-        "weightType": "fix",
-        "payload": {
-          "type": "string",
-          "value": "500"
-        }
-      }
-    ]
-  }'
-```
-
-### 4.5 环境变量
-
-```bash
-# Unleash 配置
-export FEATURE_FLAGS_PROVIDER=unleash
-export UNLEASH_URL=http://unleash:4242/api
-export UNLEASH_TOKEN=default:development.unleash-insecure-api-token
-export UNLEASH_APP_NAME=e2b-api
-```
+| 场景 | 推荐 |
+|------|------|
+| 单节点/测试 | 不设置 `LAUNCH_DARKLY_API_KEY`，使用 fallback |
+| 私有化生产且不需要动态灰度 | 不设置 `LAUNCH_DARKLY_API_KEY`，用发布流程控制配置 |
+| 需要动态灰度和按上下文定向 | 保留 LaunchDarkly，或实现 YAML/Unleash provider 改造 |
 
 ---
 
-## 5. 修改代码支持多 Provider
-
-### 5.1 Provider 接口
-
-```go
-// packages/shared/pkg/featureflags/provider.go
-
-package featureflags
-
-import "github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-
-// Provider 定义 Feature Flag 提供者接口
-type Provider interface {
-    GetBool(key string, fallback bool) bool
-    GetInt(key string, fallback int) int
-    GetString(key string, fallback string) string
-    GetJSON(key string, fallback ldvalue.Value) ldvalue.Value
-    Close() error
-}
-```
-
-### 5.2 修改 Client
-
-```go
-// packages/shared/pkg/featureflags/client.go (修改后)
-
-package featureflags
-
-import (
-    "context"
-    "os"
-
-    ldclient "github.com/launchdarkly/go-server-sdk/v7"
-    "github.com/launchdarkly/go-sdk-common/v3/ldcontext"
-)
-
-type Client struct {
-    provider       Provider
-    ld             *ldclient.LDClient
-    deploymentName string
-    serviceName    string
-}
-
-func NewClient() (*Client, error) {
-    provider := os.Getenv("FEATURE_FLAGS_PROVIDER")
-
-    switch provider {
-    case "yaml":
-        configPath := os.Getenv("FEATURE_FLAGS_CONFIG")
-        yamlProvider, err := NewYAMLProvider(configPath)
-        if err != nil {
-            return nil, err
-        }
-        return &Client{provider: yamlProvider}, nil
-
-    case "unleash":
-        url := os.Getenv("UNLEASH_URL")
-        token := os.Getenv("UNLEASH_TOKEN")
-        appName := os.Getenv("UNLEASH_APP_NAME")
-        unleashProvider, err := NewUnleashProvider(appName, url, token)
-        if err != nil {
-            return nil, err
-        }
-        return &Client{provider: unleashProvider}, nil
-
-    default:
-        // LaunchDarkly (默认)
-        if launchDarklyApiKey == "" {
-            return NewClientWithDatasource(launchDarklyOfflineStore)
-        }
-        ldClient, err := ldclient.MakeClient(launchDarklyApiKey, waitForInit)
-        if err != nil {
-            return nil, err
-        }
-        return &Client{ld: ldClient}, nil
-    }
-}
-```
-
----
-
-## 5. 部署对比
-
-| 特性 | YAML 配置 | Unleash | LaunchDarkly |
-|------|-----------|---------|--------------|
-| 部署成本 | 零 | 中 | 高 (企业版) |
-| 动态更新 | 需重启 | 自动 | 自动 |
-| 灰度发布 | ❌ | ✅ | ✅ |
-| 按团队/模板 | ❌ | ✅ | ✅ |
-| Web UI | ❌ | ✅ | ✅ |
-| API | ❌ | ✅ | ✅ |
-| 多环境支持 | ❌ | ✅ | ✅ |
-| 审计日志 | ❌ | ✅ | ✅ |
-| 代码改动 | ~100行 | ~200行 | 0 |
-
----
-
-## 6. 推荐方案
-
-### 6.1 单节点/测试
-使用 **YAML 配置**，零成本部署
-
-### 6.2 生产环境（不需要灰度）
-使用 **YAML 配置**，通过 Git 管理版本
-
-### 6.3 生产环境（需要灰度）
-使用 **Unleash**，支持团队/模板级别的灰度发布
-
-### 部署命令
-
-```bash
-# YAML 方案
-export FEATURE_FLAGS_PROVIDER=yaml
-export FEATURE_FLAGS_CONFIG=/etc/e2b/feature-flags.yaml
-
-# Unleash 方案
-docker-compose -f docker-compose.unleash.yml up -d
-./create-flags.sh
-export FEATURE_FLAGS_PROVIDER=unleash
-export UNLEASH_URL=http://unleash:4242/api
-export UNLEASH_TOKEN=your-token
-```
-
----
-
-*文档同步至上游 e2b-dev/infra 仓库 upstream/main (2026.17+13)*
+*文档同步至上游 e2b-dev/infra 仓库 tag 2026.28*
