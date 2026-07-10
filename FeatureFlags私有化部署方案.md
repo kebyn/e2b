@@ -2,6 +2,8 @@
 
 > 本文档是 **Feature Flags 私有化部署主文档**：负责维护当前 Flag 清单、默认值、LaunchDarkly 离线行为与私有化替代方案。
 >
+> 本文档不维护服务启动参数全集或整体组件取舍；这些内容分别由参数文档和组件分析文档维护。
+>
 > 基线：上游 `e2b-dev/infra` tag `2026.28`，以 `packages/shared/pkg/featureflags/flags.go` 为准。
 >
 > 相关文档：
