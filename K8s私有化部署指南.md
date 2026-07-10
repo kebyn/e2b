@@ -1,12 +1,34 @@
 # E2B Kubernetes 私有化部署完整指南
 
+> 本文档是 **Kubernetes 私有化部署专线文档**：负责说明如何用 `2026.28` 已内置的 Kubernetes service discovery 部署 E2B，不维护通用裸机 / Docker / Nomad 部署步骤。
+>
+> 相关文档：
+> - [`README.md`](./README.md)：仓库总入口与文档导航
+> - [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md)：零 Terraform / 零 IaC 的通用生产部署主文档
+> - [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md)：高可用验证、故障恢复和监控补强
+> - [`启动参数详解.md`](./启动参数详解.md)：`SERVICE_DISCOVERY_PROVIDER`、`K8S_*`、`REDIS_*` 等运行时配置
+> - [`私有化部署组件分析.md`](./私有化部署组件分析.md)：组件取舍、替代和降级策略
+
+---
+
+## 阅读导航
+
+### 如果你要在 Kubernetes 上部署
+- 直接按本文档顺序执行
+
+### 如果你只是确认 K8s 是否还需要改代码
+- 看 [3. 2026.28 内置 K8s 支持](#3-202628-内置-k8s-支持)
+
+### 如果你在查环境变量或组件取舍
+- 变量看 [`启动参数详解.md`](./启动参数详解.md#阅读导航)，组件取舍看 [`私有化部署组件分析.md`](./私有化部署组件分析.md#阅读导航)
+
 ---
 
 ## 目录
 
 1. [架构概述](#1-架构概述)
 2. [前置条件](#2-前置条件)
-3. [代码改造方案](#3-代码改造方案)
+3. [2026.28 内置 K8s 支持](#3-202628-内置-k8s-支持)
 4. [K8s 部署清单](#4-k8s-部署清单)
 5. [配置管理](#5-配置管理)
 6. [网络与存储](#6-网络与存储)
@@ -58,7 +80,7 @@
 │  │                         Data Layer                                   │   │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │   │
 │  │  │   Redis      │  │  PostgreSQL  │  │  ClickHouse  │  (可选)       │   │
-│  │  │  (Sentinel)  │  │   (HA)       │  │  (可选)      │              │   │
+│  │  │(VIP/Cluster) │  │   (HA)       │  │  (可选)      │              │   │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘              │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
@@ -72,7 +94,7 @@
 | API | Deployment | 3 | 无状态，水平扩展 |
 | Client Proxy | Deployment | 2+ | 无状态，水平扩展 |
 | Orchestrator | DaemonSet | = 节点数 | 每个节点一个，管理 sandbox |
-| Redis | StatefulSet | 3 | Sentinel 或 Cluster 模式 |
+| Redis | StatefulSet / 外部托管服务 | 1 主 + 副本 + LB，或 Cluster | 应用只连接 `REDIS_URL` 单端点或 `REDIS_CLUSTER_URL` 集群端点，不直连 Sentinel |
 | PostgreSQL | StatefulSet | 3 | 主从复制 + 连接池 |
 | ClickHouse | StatefulSet | 1+ | 可选，用于指标存储 |
 
@@ -238,8 +260,9 @@ stringData:
   # 数据库
   POSTGRES_CONNECTION_STRING: "postgresql://e2b:password@postgres:5432/e2b?sslmode=disable"
 
-  # Redis
-  REDIS_URL: "redis:6379"
+  # Redis：应用连接稳定主端点；Cluster 模式改用 REDIS_CLUSTER_URL
+  REDIS_URL: "redis-primary:6379"
+  # REDIS_CLUSTER_URL: "redis-node-1:6379,redis-node-2:6379,redis-node-3:6379"
 
   # 认证 provider（可选）
   AUTH_PROVIDER_CONFIG: '{"jwt":[]}'
@@ -581,7 +604,14 @@ spec:
           path: /lib/modules
 ```
 
-### 4.7 Redis (Sentinel 模式)
+### 4.7 Redis 接入（单端点或 Cluster）
+
+`2026.28` 的应用侧 Redis 客户端只支持两类连接：
+
+- `REDIS_URL=host:port`：单 Redis 端点。生产环境可在 Redis 主从前放 HAProxy/VIP/云 LB，让应用始终连接当前主节点。
+- `REDIS_CLUSTER_URL=host1:port,host2:port`：Redis Cluster 端点列表。
+
+不要把 Sentinel 的 `26379` 端口配置给应用。Sentinel 可以作为 Redis 主从选主和运维查询机制，但应用前面仍需要单一 `host:port` 入口。下面的清单是最小 StatefulSet 示例；生产高可用建议使用 Redis Operator、云托管 Redis，或 Redis 主从 + HAProxy/VIP。
 
 ```yaml
 # redis-statefulset.yaml
@@ -591,8 +621,8 @@ metadata:
   name: redis
   namespace: e2b
 spec:
-  serviceName: redis
-  replicas: 3
+  serviceName: redis-headless
+  replicas: 1
   selector:
     matchLabels:
       app: redis
@@ -631,7 +661,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis
+  name: redis-headless
   namespace: e2b
 spec:
   selector:
@@ -640,6 +670,18 @@ spec:
   - port: 6379
     targetPort: 6379
   clusterIP: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-primary
+  namespace: e2b
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
 ```
 
 ### 4.8 PostgreSQL (主从复制)
@@ -811,7 +853,10 @@ roleRef:
 POSTGRES_CONNECTION_STRING=postgresql://e2b:password@postgres:5432/e2b
 
 # Redis
-REDIS_URL=redis:6379
+# 单端点模式：指向 Redis 主节点前面的 Service / HAProxy / VIP
+REDIS_URL=redis-primary:6379
+# 或 Cluster 模式：逗号分隔多个节点
+# REDIS_CLUSTER_URL=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
 
 # 模板存储
 TEMPLATE_BUCKET_NAME=e2b-templates
@@ -856,7 +901,7 @@ LOKI_URL=http://loki:3100
 kubectl create secret generic e2b-secrets \
   --namespace e2b \
   --from-literal=POSTGRES_CONNECTION_STRING="postgresql://..." \
-  --from-literal=REDIS_URL="redis:6379" \
+  --from-literal=REDIS_URL="redis-primary:6379" \
   --from-literal=ADMIN_TOKEN="$(openssl rand -hex 32)"
 
 # 或使用 Sealed Secrets / External Secrets Operator
