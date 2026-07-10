@@ -97,7 +97,7 @@
   CPU: 8 核
   内存: 32GB
   存储: 200GB SSD
-  
+
 # 网络要求
 - 支持 CNI (Calico/Cilium 推荐)
 - 支持 LoadBalancer 或 NodePort
@@ -223,17 +223,17 @@ func (sd *K8sServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 type ServiceDiscoveryConfig struct {
     // k8s, static, redis, nomad
     Provider string `env:"SERVICE_DISCOVERY_PROVIDER" envDefault:"k8s"`
-    
+
     // K8s 配置
     K8sNamespace string `env:"K8S_NAMESPACE" envDefault:"e2b"`
-    
+
     // 静态配置文件路径
     StaticConfigPath string `env:"STATIC_CONFIG_PATH"`
 }
 
 type Config struct {
     // ... 现有字段 ...
-    
+
     ServiceDiscovery ServiceDiscoveryConfig
 }
 ```
@@ -284,7 +284,7 @@ const (
 
 func newStorage(ctx context.Context, nodeID string, config Config) (Storage, error) {
     storageType := GetEnv("IP_SLOT_STORAGE", "local")
-    
+
     switch StorageType(storageType) {
     case StorageTypeRedis:
         redisURL := GetEnv("REDIS_URL", "")
@@ -332,15 +332,15 @@ data:
   K8S_NAMESPACE: "e2b"
   IP_SLOT_STORAGE: "local"
   SANDBOX_STORAGE_BACKEND: "redis"
-  
+
   # 默认端口
   GRPC_PORT: "5008"
   PROXY_PORT: "3002"
   HEALTH_PORT: "3003"
-  
+
   # Nomad 配置（可选，保留向后兼容）
   NOMAD_ADDRESS: ""
-  
+
   # ClickHouse（可选）
   CLICKHOUSE_CONNECTION_STRING: ""
 ```
@@ -358,25 +358,25 @@ type: Opaque
 stringData:
   # 数据库
   POSTGRES_CONNECTION_STRING: "postgresql://e2b:password@postgres:5432/e2b?sslmode=disable"
-  
+
   # Redis
   REDIS_URL: "redis:6379"
-  
+
   # 认证（可选）
   SUPABASE_JWT_SECRETS: ""
   ADMIN_TOKEN: "your-admin-token"
-  
+
   # Volume Token
   VOLUME_TOKEN_ISSUER: "e2b.your-domain.com"
   VOLUME_TOKEN_SIGNING_METHOD: "ES256"
   VOLUME_TOKEN_SIGNING_KEY: "ECDSA:base64-encoded-private-key"
   VOLUME_TOKEN_SIGNING_KEY_NAME: "prod-2024-01"
-  
+
   # 模板存储（GCP 或 AWS）
   TEMPLATE_BUCKET_NAME: "e2b-templates"
   BUILD_CACHE_BUCKET_NAME: "e2b-build-cache"
   GOOGLE_SERVICE_ACCOUNT_BASE64: ""
-  
+
   # Loki（可选）
   LOKI_URL: "http://loki:3100"
 ```

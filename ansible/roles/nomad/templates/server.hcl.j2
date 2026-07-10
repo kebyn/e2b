@@ -6,7 +6,7 @@ data_dir   = "/opt/nomad/data"
 server {
   enabled          = true
   bootstrap_expect = {{ groups['nomad_server'] | length }}
-  
+
   server_join {
     retry_join = [
       {% for host in groups['nomad_server'] %}
