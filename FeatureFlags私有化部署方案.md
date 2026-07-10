@@ -4,7 +4,7 @@
 >
 > 本文档不维护服务启动参数全集或整体组件取舍；这些内容分别由参数文档和组件分析文档维护。
 >
-> 基线：上游 `e2b-dev/infra` tag `2026.28`，以 `packages/shared/pkg/featureflags/flags.go` 为准。
+> 基线：上游 `e2b-dev/infra` tag `2026.28`，以 `infra/packages/shared/pkg/featureflags/flags.go` 为准。
 >
 > 相关文档：
 > - [`README.md`](./README.md)：仓库总入口与文档导航
@@ -174,7 +174,7 @@ unset LAUNCH_DARKLY_API_KEY
 
 ### 4.2 YAML / 文件配置
 
-这是可选改造，不是 `2026.28` 当前能力。若要实现，建议只在 `packages/shared/pkg/featureflags` 内增加 provider 抽象，并保持现有 `BoolFlag`、`IntFlag`、`StringFlag`、`JSONFlag` 调用点不变。
+这是可选改造，不是 `2026.28` 当前能力。若要实现，建议只在 `infra/packages/shared/pkg/featureflags` 内增加 provider 抽象，并保持现有 `BoolFlag`、`IntFlag`、`StringFlag`、`JSONFlag` 调用点不变。
 
 配置文件应直接使用第 2 节的 flag key。例如：
 

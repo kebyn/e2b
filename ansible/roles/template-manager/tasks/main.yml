@@ -9,7 +9,7 @@
 
 - name: 复制 Orchestrator 二进制文件 (如未部署)
   copy:
-    src: ../../packages/orchestrator/bin/orchestrator
+    src: "{{ playbook_dir }}/../../infra/packages/orchestrator/bin/orchestrator"
     dest: /usr/local/bin/orchestrator
     owner: e2b
     group: e2b

@@ -71,7 +71,7 @@
 - name: 运行数据库迁移 (仅主节点)
   shell: |
     cd /opt/infra
-    make -C packages/db migrate
+    make -C infra/packages/db migrate
   environment:
     POSTGRES_CONNECTION_STRING: "postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:{{ postgres_port }}/{{ postgres_database }}?sslmode=disable"
   when:

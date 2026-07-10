@@ -1,46 +1,67 @@
-![E2B Infra Preview Light](/readme-assets/infra-light.png#gh-light-mode-only)
-![E2B Infra Preview Dark](/readme-assets/infra-dark.png#gh-dark-mode-only)
+# E2B Infra 私有化部署文档
 
-# E2B Infrastructure
+本仓库是 `e2b-dev/infra` 的中文私有化部署文档壳。根目录只维护本地部署分析、中文运行手册和少量增强部署资产；上游工程源码、IaC、CI、OpenAPI、脚本、测试和英文开发文档都以 `infra/` Git submodule 为准。
 
-[E2B](https://e2b.dev) is an open-source infrastructure for AI code interpreting. In our main repository [e2b-dev/e2b](https://github.com/e2b-dev/E2B) we are giving you SDKs and CLI to customize and manage environments and run your AI agents in the cloud.
+## 初始化
 
-This repository contains the infrastructure that powers the E2B platform.
+克隆后先拉取子模块：
 
-## Contributing
+```bash
+git submodule update --init --recursive
+```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways you can contribute to E2B Infrastructure.
+需要执行上游工程命令时进入子模块：
 
-## Reading guide
+```bash
+cd infra
+```
 
-Start here depending on what you need:
+也可以在根目录显式引用子模块路径，例如：
 
-- **Use the supported Terraform cloud path** → [`self-host.md`](./self-host.md)
-- **Run an ad-hoc local / experimental bootstrap** → [`deploy.md`](./deploy.md#reading-guide)
-- **Deploy privately without code or Terraform changes** → [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md#阅读导航)
-- **Deploy the private stack on Kubernetes** → [`K8s私有化部署指南.md`](./K8s私有化部署指南.md#阅读导航)
-- **Validate HA and run failover drills** → [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md#5-高可用验证)
-- **Look up runtime configuration and environment variables** → [`启动参数详解.md`](./启动参数详解.md#阅读导航)
-- **Understand infrastructure component responsibilities** → [`核心组件详解.md`](./核心组件详解.md#阅读导航)
-- **Decide which private-deployment components are required** → [`私有化部署组件分析.md`](./私有化部署组件分析.md#阅读导航)
-- **Review feature flags and private alternatives** → [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航)
-- **Review upstream 2026.17 → 2026.28 sync impact** → [`上游同步说明-2026.17-to-2026.28.md`](./上游同步说明-2026.17-to-2026.28.md)
+```bash
+make -C infra/packages/db migrate
+```
 
-## Repository scope
+## 仓库边界
 
-This repo is the infrastructure layer for E2B, including:
+根目录保留：
 
-- Terraform / cloud provisioning
-- Nomad-based workload orchestration
-- API, Client Proxy, Orchestrator, Template Manager
-- storage, observability, and deployment tooling
+- 中文私有化部署、组件分析、启动参数和上游同步说明文档
+- `ansible/`、`daytona-k8s/`、`daytona-docs/` 等本地增强目录
+- `infra/` 子模块指针、`.gitmodules`、`LICENSE`、`AGENTS.md`
 
-## Self-hosting
+上游工程内容直接从 `infra/` 引用：
 
-Read the [self-hosting guide](./self-host.md) to learn how to set up the infrastructure on your own. The infrastructure is deployed using Terraform.
+- 源码和二进制构建：`infra/packages/`
+- Terraform、Nomad job 和云资源定义：`infra/iac/`
+- OpenAPI 规范：`infra/spec/`
+- GitHub Actions 和代码质量配置：`infra/.github/`
+- 脚本、测试、Grafana、fixtures：`infra/scripts/`、`infra/tests/`、`infra/grafana/`、`infra/fixtures/`
+- 英文开发文档：`infra/self-host.md`、`infra/DEV-LOCAL.md`、`infra/DEV.md`、`infra/CONTRIBUTING.md`、`infra/CLAUDE.md`
 
-Supported cloud providers:
-- 🟢 GCP
-- 🟢 AWS (Beta)
-- [ ] Azure
-- [ ] General linux machine
+## 阅读导航
+
+- 官方 Terraform 云部署路径：[`infra/self-host.md`](./infra/self-host.md)
+- 本地开发环境：[`infra/DEV-LOCAL.md`](./infra/DEV-LOCAL.md)
+- 上游开发说明：[`infra/DEV.md`](./infra/DEV.md)
+- 贡献说明：[`infra/CONTRIBUTING.md`](./infra/CONTRIBUTING.md)
+- 不修改代码完整私有化部署：[`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md#阅读导航)
+- 不修改代码高可用部署：[`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md#5-高可用验证)
+- Kubernetes 私有化部署：[`K8s私有化部署指南.md`](./K8s私有化部署指南.md#阅读导航)
+- 启动参数和环境变量：[`启动参数详解.md`](./启动参数详解.md#阅读导航)
+- 核心组件职责：[`核心组件详解.md`](./核心组件详解.md#阅读导航)
+- 私有化组件取舍：[`私有化部署组件分析.md`](./私有化部署组件分析.md#阅读导航)
+- Feature Flags 私有化：[`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航)
+- LaunchDarkly 私有化：[`LaunchDarkly私有化部署方案.md`](./LaunchDarkly私有化部署方案.md)
+- 上游 `2026.17` 到 `2026.28` 同步影响：[`上游同步说明-2026.17-to-2026.28.md`](./上游同步说明-2026.17-to-2026.28.md)
+
+## 路径约定
+
+根目录文档中出现的上游源码路径均以 `infra/` 开头。示例：
+
+- `infra/packages/api/internal/cfg/model.go`
+- `infra/iac/provider-gcp/`
+- `infra/spec/openapi.yml`
+- `infra/.github/workflows/pr-tests.yml`
+
+如果某条命令必须在 Go module、Terraform module 或上游脚本所在目录执行，文档会显式写出 `cd infra` 或使用 `make -C infra/...`。
