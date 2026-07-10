@@ -15,15 +15,16 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways you can contribute to E2B Infr
 
 Start here depending on what you need:
 
-- **Self-host E2B on a cloud provider** → [`self-host.md`](./self-host.md#reading-guide)
+- **Use the supported Terraform cloud path** → [`self-host.md`](./self-host.md)
 - **Run an ad-hoc local / experimental bootstrap** → [`deploy.md`](./deploy.md#reading-guide)
-- **Review upstream 2026.17 → 2026.28 sync impact** → [`上游同步说明-2026.17-to-2026.28.md`](./上游同步说明-2026.17-to-2026.28.md)
-- **Understand the main infrastructure components** → [`核心组件详解.md`](./核心组件详解.md#阅读导航)
-- **Decide which components are required in private deployments** → [`私有化部署组件分析.md`](./私有化部署组件分析.md#阅读导航)
+- **Deploy privately without code or Terraform changes** → [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md#阅读导航)
+- **Deploy the private stack on Kubernetes** → [`K8s私有化部署指南.md`](./K8s私有化部署指南.md#阅读导航)
+- **Validate HA and run failover drills** → [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md#5-高可用验证)
 - **Look up runtime configuration and environment variables** → [`启动参数详解.md`](./启动参数详解.md#阅读导航)
-- **See feature flags and private alternatives** → [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航)
-- **Follow the no-code production deployment path** → [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md#阅读导航)
-- **Do HA validation and failover drills** → [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md#5-高可用验证)
+- **Understand infrastructure component responsibilities** → [`核心组件详解.md`](./核心组件详解.md#阅读导航)
+- **Decide which private-deployment components are required** → [`私有化部署组件分析.md`](./私有化部署组件分析.md#阅读导航)
+- **Review feature flags and private alternatives** → [`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航)
+- **Review upstream 2026.17 → 2026.28 sync impact** → [`上游同步说明-2026.17-to-2026.28.md`](./上游同步说明-2026.17-to-2026.28.md)
 
 ## Repository scope
 
