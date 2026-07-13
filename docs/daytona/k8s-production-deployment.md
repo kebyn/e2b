@@ -141,10 +141,12 @@ helm repo update
 
 ## 3. 快速部署
 
+部署清单和脚本仍维护在仓库根目录的 `daytona-k8s/` 资产目录中。以下命令默认在该目录内执行。
+
 ```bash
-# 克隆部署文件
-git clone <this-repo> daytona-k8s
-cd daytona-k8s
+# 克隆本仓库后进入 Daytona K8s 资产目录
+git clone <this-repo> e2b-infra-docs
+cd e2b-infra-docs/daytona-k8s
 
 # 一键部署（交互式）
 ./scripts/deploy.sh deploy-all \

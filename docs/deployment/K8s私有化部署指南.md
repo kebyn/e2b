@@ -3,11 +3,11 @@
 > 本文档是 **Kubernetes 私有化部署专线文档**：负责说明如何用 `2026.28` 已内置的 Kubernetes service discovery 部署 E2B，不维护通用裸机 / Docker / Nomad 部署步骤。
 >
 > 相关文档：
-> - [`README.md`](./README.md)：仓库总入口与文档导航
+> - [`README.md`](../../README.md)：仓库总入口与文档导航
 > - [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md)：零 Terraform / 零 IaC 的通用生产部署主文档
 > - [`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md)：高可用验证、故障恢复和监控补强
-> - [`启动参数详解.md`](./启动参数详解.md)：`SERVICE_DISCOVERY_PROVIDER`、`K8S_*`、`REDIS_*` 等运行时配置
-> - [`私有化部署组件分析.md`](./私有化部署组件分析.md)：组件取舍、替代和降级策略
+> - [`启动参数详解.md`](../reference/启动参数详解.md)：`SERVICE_DISCOVERY_PROVIDER`、`K8S_*`、`REDIS_*` 等运行时配置
+> - [`私有化部署组件分析.md`](../architecture/私有化部署组件分析.md)：组件取舍、替代和降级策略
 
 ---
 
@@ -20,7 +20,7 @@
 - 看 [3. 2026.28 内置 K8s 支持](#3-202628-内置-k8s-支持)
 
 ### 如果你在查环境变量或组件取舍
-- 变量看 [`启动参数详解.md`](./启动参数详解.md#阅读导航)，组件取舍看 [`私有化部署组件分析.md`](./私有化部署组件分析.md#阅读导航)
+- 变量看 [`启动参数详解.md`](../reference/启动参数详解.md#阅读导航)，组件取舍看 [`私有化部署组件分析.md`](../architecture/私有化部署组件分析.md#阅读导航)
 
 ---
 
@@ -277,9 +277,11 @@ stringData:
   VOLUME_TOKEN_SIGNING_KEY: "ECDSA:base64-encoded-private-key"
   VOLUME_TOKEN_SIGNING_KEY_NAME: "prod-2024-01"
 
-  # 模板存储（GCP 或 AWS）
+  # 模板存储（GCS / S3 / MinIO）
   TEMPLATE_BUCKET_NAME: "e2b-templates"
   BUILD_CACHE_BUCKET_NAME: "e2b-build-cache"
+  # GCS 使用 GOOGLE_SERVICE_ACCOUNT_BASE64；AWS / MinIO 使用 AWS SDK 标准环境变量
+  # MinIO 这类 S3 兼容服务通常还需要 AWS_ENDPOINT_URL 和 S3_USE_PATH_STYLE=true
   GOOGLE_SERVICE_ACCOUNT_BASE64: ""
 
   # Loki（可选）
@@ -861,7 +863,13 @@ REDIS_URL=redis-primary:6379
 # 模板存储
 TEMPLATE_BUCKET_NAME=e2b-templates
 BUILD_CACHE_BUCKET_NAME=e2b-build-cache
-STORAGE_PROVIDER=GCPBucket  # 或 AWSBucket
+# GCS: STORAGE_PROVIDER=GCPBucket
+# AWS S3 / MinIO: STORAGE_PROVIDER=AWSBucket
+# 本地/NFS 共享目录: STORAGE_PROVIDER=Local，并设置 LOCAL_TEMPLATE_STORAGE_BASE_PATH
+STORAGE_PROVIDER=GCPBucket
+# MinIO path-style 访问通常需要：
+# AWS_ENDPOINT_URL=http://minio.e2b.svc.cluster.local:9000
+# S3_USE_PATH_STYLE=true
 
 # === K8s 特定配置 ===
 
@@ -970,7 +978,8 @@ spec:
 
 ---
 # 选项 2: 使用 MinIO (S3 兼容对象存储)
-# 配置 STORAGE_PROVIDER=Local 和 LOCAL_TEMPLATE_STORAGE_BASE_PATH
+# 配置 STORAGE_PROVIDER=AWSBucket、TEMPLATE_BUCKET_NAME 和 BUILD_CACHE_BUCKET_NAME
+# MinIO path-style 访问通常还需要 AWS_ENDPOINT_URL 和 S3_USE_PATH_STYLE=true
 ```
 
 ---

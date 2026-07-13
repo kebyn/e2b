@@ -12,6 +12,7 @@
 
 ## 目录
 
+0. [产品概览](#0-产品概览)
 1. [E2B（基准）详细能力分析](#1-e2b基准详细能力分析)
 2. [Daytona 详细能力分析](#2-daytona-详细能力分析)
 3. [OpenSandbox 详细能力分析](#3-opensandbox-详细能力分析)
@@ -20,6 +21,29 @@
 6. [腾讯云 Agent Runtime 详细能力分析](#6-腾讯云-agent-runtime-详细能力分析)
 7. [全维度能力对比矩阵](#7-全维度能力对比矩阵)
 8. [API 能力逐项对比](#8-api-能力逐项对比)
+
+---
+
+## 0. 产品概览
+
+| 维度 | E2B (基准) | Daytona | OpenSandbox | agent-infra/sandbox | 阿里云 Agent Sandbox | 腾讯云 Agent Runtime |
+|------|-----------|---------|-------------|---------------------|---------------------|---------------------|
+| **定位** | AI 代码执行沙箱基础设施 | AI 代码安全弹性运行平台 | 通用 AI 沙箱平台 | All-in-One Agent 沙箱 | 生产级 AI 智能体沙箱算力 | AI Agent 沙箱服务 |
+| **GitHub Stars** | 11.5k | 70.9k | 9.4k | 3.3k | - (云服务) | - (云服务) |
+| **开源协议** | Apache-2.0 | AGPL-3.0 | Apache-2.0 | Apache-2.0 | 闭源 | 闭源 |
+| **主语言** | Python/TypeScript | Go/TypeScript | Python/Go | Python/TypeScript | - | - |
+| **E2B 兼容** | 基准 | 否 | 否 | 否 | 兼容 SDK | 兼容 SDK |
+
+### 0.1 选型建议
+
+| 场景 | 推荐 |
+|------|------|
+| 成熟稳定的 AI 代码执行平台、简洁 API、社区生态和自托管能力 | E2B |
+| 极致沙箱创建速度、Git/LSP 集成、多语言 SDK（Go/Ruby） | Daytona |
+| 多语言 SDK、Kubernetes 原生集成、gVisor/Kata/Firecracker 安全容器、CNCF 生态 | OpenSandbox |
+| 浏览器 + VSCode + 终端 + MCP 的一体化开发环境，且希望单容器轻量部署 | agent-infra/sandbox |
+| 大规模弹性、状态保持、休眠唤醒、阿里云生态和 MicroVM 隔离 | 阿里云 Agent Sandbox |
+| 从 E2B 快速迁移到腾讯云基础设施并最小化代码改动 | 腾讯云 Agent Runtime |
 
 ---
 

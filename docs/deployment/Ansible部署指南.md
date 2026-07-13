@@ -32,6 +32,8 @@ ansible/
 
 ## 快速开始
 
+以下命令默认从仓库根目录执行；运行 `ansible-playbook` 前进入 `ansible/` 资产目录。
+
 ### 1. 修改配置
 
 ```bash
