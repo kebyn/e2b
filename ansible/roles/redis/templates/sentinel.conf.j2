@@ -4,7 +4,7 @@ port {{ redis_sentinel_port }}
 daemonize no
 supervised systemd
 
-sentinel monitor mymaster {{ hostvars[groups['redis'] | selectattr('redis_role', 'equalto', 'master') | first]['ansible_host'] }} {{ redis_port }} 2
+sentinel monitor mymaster {{ redis_master_host }} {{ redis_port }} 2
 sentinel down-after-milliseconds mymaster 5000
 sentinel parallel-syncs mymaster 1
 sentinel failover-timeout mymaster 10000

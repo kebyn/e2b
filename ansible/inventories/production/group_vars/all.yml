@@ -11,6 +11,39 @@ domain_name: e2b.example.com
 api_domain: "api.{{ domain_name }}"
 sandbox_domain: "*.sandbox.{{ domain_name }}"
 
+# Inventory 派生变量
+ansible_architecture_normalized: >-
+  {{
+    {
+      'x86_64': 'amd64',
+      'amd64': 'amd64',
+      'aarch64': 'arm64',
+      'arm64': 'arm64'
+    }.get(ansible_architecture | default('amd64'), ansible_architecture | default('amd64'))
+  }}
+postgres_primary_host: >-
+  {{
+    (
+      groups['postgresql'] | default([])
+      | map('extract', hostvars)
+      | selectattr('pg_role', 'equalto', 'primary')
+      | map(attribute='ansible_host')
+      | list
+      | first
+    ) | default('')
+  }}
+redis_master_host: >-
+  {{
+    (
+      groups['redis'] | default([])
+      | map('extract', hostvars)
+      | selectattr('redis_role', 'equalto', 'master')
+      | map(attribute='ansible_host')
+      | list
+      | first
+    ) | default('')
+  }}
+
 # ============================================================
 # 数据库配置 (必需)
 # ============================================================
@@ -25,15 +58,39 @@ postgres_effective_cache_size: "12GB"
 
 # ============================================================
 # Redis 配置 (必需)
-# ⚠️ redis_host 是应用实际连接的 Redis 端点（host:port 格式中的 host 部分）
-# ⚠️ 如使用 Sentinel，需部署 HAProxy 并将 redis_host 指向 HAProxy 地址
+# redis_url 是应用实际连接的 Redis 端点，格式为 host:port。
+# 如使用 Sentinel，需部署 HAProxy/VIP/云 LB 并将 redis_url 指向该稳定主端点。
+# redis_host 保留为旧配置兼容项，仅填写 host 部分。
 # ============================================================
 redis_version: "7"
-redis_host: ""             # ← 必须填写：Redis 主节点或 HAProxy 地址
+redis_url: ""              # 推荐填写，例如 redis-vip.example.com:6379
+redis_host: ""             # 兼容旧配置：Redis 主节点或 HAProxy 地址，不含端口
 redis_port: 6379
+redis_cluster_url: ""      # Redis Cluster 模式，例如 node1:6379,node2:6379
+redis_tls_ca_base64: ""
 redis_sentinel_port: 26379
 redis_maxmemory: "2gb"
 redis_requirepass: "CHANGE_ME_REDIS_PASSWORD"
+redis_effective_url: >-
+  {{
+    redis_url
+    if (redis_url | default('') | length > 0)
+    else (
+      (redis_host ~ ':' ~ redis_port)
+      if (redis_host | default('') | length > 0)
+      else (
+        (redis_master_host ~ ':' ~ redis_port)
+        if (redis_master_host | default('') | length > 0)
+        else ''
+      )
+    )
+  }}
+
+# Redis 连接池配置
+api_redis_pool_size: 160
+client_proxy_redis_pool_size: 40
+orchestrator_redis_pool_size: 20
+orchestrator_redis_min_idle_conns: 2
 
 # ============================================================
 # Nomad 配置 (必需)
@@ -41,6 +98,8 @@ redis_requirepass: "CHANGE_ME_REDIS_PASSWORD"
 nomad_version: "1.11.3"
 nomad_datacenter: dc1
 nomad_acl_enabled: true
+nomad_token: ""
+nomad_acl_bootstrap_enabled: true
 
 # ============================================================
 # 应用配置 (必需)
@@ -51,6 +110,10 @@ nomad_acl_enabled: true
 template_bucket_name: e2b-templates
 build_cache_bucket_name: e2b-build-cache
 storage_provider: Local    # 私有化默认 Local；云部署改为 GCPBucket 或 AWSBucket
+local_template_storage_base_path: "{{ e2b_base_dir }}/storage/templates"
+local_build_cache_storage_base_path: "{{ e2b_base_dir }}/storage/build-cache"
+aws_endpoint_url: ""       # S3 兼容服务（如 MinIO）可填写自定义 endpoint
+s3_use_path_style: false   # S3 兼容服务通常需要 true
 gcp_project_id: ""         # 仅 GCPBucket 时需要
 gcp_region: us-central1    # 仅 GCPBucket 时需要
 google_service_account_base64: ""  # 仅 GCPBucket 时需要
@@ -90,6 +153,7 @@ clickhouse_user: clickhouse
 clickhouse_password: clickhouse
 clickhouse_database: default
 clickhouse_port: 9000
+clickhouse_connection_strings: []
 
 # Loki (可选)
 loki_enabled: false
@@ -114,6 +178,8 @@ e2b_kernels_dir: "{{ e2b_base_dir }}/kernels"
 e2b_firecracker_dir: "{{ e2b_base_dir }}/firecracker"
 e2b_envd_path: "{{ e2b_base_dir }}/envd/envd"
 e2b_busybox_dir: "{{ e2b_base_dir }}/busybox"
+default_firecracker_version: v1.14.1_431f1fc
+default_kernel_version: vmlinux-6.1.158
 
 # ============================================================
 # 端口配置

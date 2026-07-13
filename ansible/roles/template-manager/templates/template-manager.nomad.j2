@@ -26,10 +26,19 @@ job "e2b-template-manager" {
         ENVIRONMENT                 = "{{ environment }}"
         ORCHESTRATOR_SERVICES       = "template-manager"              # 关键区别
         # ⚠️ 格式：host:port，不支持 redis:// 前缀；Sentinel 需挂 HAProxy
-        REDIS_URL                   = "{{ redis_host | default(hostvars[groups['redis_master'][0]]['ansible_host']) }}:{{ redis_port }}"
+        REDIS_URL                   = "{{ redis_effective_url }}"
+        REDIS_CLUSTER_URL           = "{{ redis_cluster_url }}"
+        REDIS_TLS_CA_BASE64         = "{{ redis_tls_ca_base64 }}"
+        REDIS_POOL_SIZE             = "{{ orchestrator_redis_pool_size }}"
         TEMPLATE_BUCKET_NAME        = "{{ template_bucket_name }}"
         BUILD_CACHE_BUCKET_NAME     = "{{ build_cache_bucket_name }}"
         STORAGE_PROVIDER            = "{{ storage_provider }}"
+        LOCAL_TEMPLATE_STORAGE_BASE_PATH = "{{ local_template_storage_base_path }}"
+        LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "{{ local_build_cache_storage_base_path }}"
+        AWS_ENDPOINT_URL            = "{{ aws_endpoint_url }}"
+        S3_USE_PATH_STYLE           = "{{ s3_use_path_style }}"
+        DEFAULT_FIRECRACKER_VERSION = "{{ default_firecracker_version }}"
+        DEFAULT_KERNEL_VERSION      = "{{ default_kernel_version }}"
         USE_LOCAL_NAMESPACE_STORAGE = "true"
         ORCHESTRATOR_BASE_PATH      = "{{ e2b_orchestrator_path }}"
         SANDBOX_DIR                 = "{{ e2b_fc_vm_dir }}"
@@ -43,6 +52,7 @@ job "e2b-template-manager" {
         {% if clickhouse_enabled %}
         CLICKHOUSE_CONNECTION_STRING = "clickhouse://{{ clickhouse_user }}:{{ clickhouse_password }}@{{ hostvars[groups['clickhouse'][0]]['ansible_host'] }}:{{ clickhouse_port }}/{{ clickhouse_database }}"
         {% endif %}
+        CLICKHOUSE_CONNECTION_STRINGS = "{{ clickhouse_connection_strings | default([]) | join(';') }}"
         {% if loki_enabled %}
         LOKI_URL                    = "http://{{ hostvars[groups['loki'][0]]['ansible_host'] }}:{{ loki_port }}"
         {% endif %}

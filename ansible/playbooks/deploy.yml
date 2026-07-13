@@ -5,6 +5,23 @@
   gather_facts: true
 
   pre_tasks:
+    - name: 校验关键部署配置
+      assert:
+        that:
+          - (redis_cluster_url | default('') | length) > 0 or (redis_effective_url | default('') | length) > 0
+          - postgres_password != "CHANGE_ME_POSTGRES_PASSWORD"
+          - redis_requirepass != "CHANGE_ME_REDIS_PASSWORD"
+          - admin_token != "CHANGE_ME_ADMIN_TOKEN"
+          - volume_token_signing_key != "ECDSA:CHANGE_ME_BASE64_PRIVATE_KEY"
+          - not (nomad_acl_enabled | bool) or (nomad_token | default('') | length) > 0 or (nomad_acl_bootstrap_enabled | bool)
+        fail_msg: |
+          请先在 inventories/production/group_vars/all.yml 中配置生产值:
+          - redis_url 或 redis_cluster_url
+          - postgres_password、redis_requirepass、admin_token
+          - volume_token_signing_key
+          - 如 Nomad ACL 已初始化，请填写 nomad_token
+      run_once: true
+
     - name: 安装基础依赖
       apt:
         name:

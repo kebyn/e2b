@@ -25,7 +25,9 @@
   run_once: true
 
 - name: 提交 Template Manager Nomad 任务
-  shell: |
-    nomad job run -token={{ hostvars[groups['nomad_server'][0]]['nomad_acl_token'] }} /tmp/e2b-template-manager.nomad
+  command: >-
+    nomad job run
+    {{ ('-token=' ~ (hostvars[groups['nomad_server'][0]]['nomad_acl_token'] | default(nomad_token | default('')))) if (nomad_acl_enabled | bool) else '' }}
+    /tmp/e2b-template-manager.nomad
   delegate_to: "{{ groups['nomad_server'][0] }}"
   run_once: true

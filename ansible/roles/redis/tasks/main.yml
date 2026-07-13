@@ -2,10 +2,25 @@
 # Redis 安装和配置
 
 - name: 添加 Redis APT 仓库
-  apt_repository:
-    repo: "ppa:redislabs/redis"
+  deb822_repository:
+    name: redislabs-redis
+    types:
+      - deb
+    uris:
+      - http://ppa.launchpad.net/redislabs/redis/ubuntu
+    suites:
+      - "{{ ansible_distribution_release }}"
+    components:
+      - main
+    signed_by: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xCC59E6B43FA6E3CA"
+    install_python_debian: true
     state: present
+  register: redis_apt_repository
+
+- name: 更新 Redis APT 缓存
+  apt:
     update_cache: yes
+  when: redis_apt_repository.changed
 
 - name: 安装 Redis
   apt:
