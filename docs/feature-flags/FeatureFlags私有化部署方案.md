@@ -7,10 +7,9 @@
 > 基线：上游 `e2b-dev/infra` tag `2026.28`，以 `infra/packages/shared/pkg/featureflags/flags.go` 为准。
 >
 > 相关文档：
-> - [`README.md`](./README.md)：仓库总入口与文档导航
-> - [`LaunchDarkly私有化部署方案.md`](./LaunchDarkly私有化部署方案.md)：LaunchDarkly 现状、离线模式与阅读路径索引
-> - [`核心组件详解.md`](./核心组件详解.md)：Feature Flags 在整体架构里的作用
-> - [`启动参数详解.md`](./启动参数详解.md)：运行时环境变量（如 `LAUNCH_DARKLY_API_KEY`）
+> - [`README.md`](../../README.md)：仓库总入口与文档导航
+> - [`核心组件详解.md`](../architecture/核心组件详解.md)：Feature Flags 在整体架构里的作用
+> - [`启动参数详解.md`](../reference/启动参数详解.md)：运行时环境变量（如 `LAUNCH_DARKLY_API_KEY`）
 
 ---
 
@@ -138,7 +137,20 @@
 
 ## 3. 当前 LaunchDarkly 行为
 
-当前代码只内置 LaunchDarkly provider 和本地 offline store：
+当前代码只内置 LaunchDarkly provider 和本地 offline store。核心入口是 `infra/packages/shared/pkg/featureflags/client.go`：
+
+```go
+func NewClient() (*Client, error) {
+    if launchDarklyApiKey == "" {
+        return NewClientWithDatasource(launchDarklyOfflineStore)
+    }
+
+    ldClient, err := ldclient.MakeClient(launchDarklyApiKey, waitForInit)
+    return &Client{ld: ldClient}, nil
+}
+```
+
+运行时行为如下：
 
 | 场景 | 行为 |
 |------|------|
@@ -146,7 +158,14 @@
 | 不设置 `LAUNCH_DARKLY_API_KEY` | 使用代码内注册的 offline store fallback |
 | CLI/测试显式调用 override | 仅影响 offline store |
 
-因此，私有化部署如果不需要动态灰度，最小方案是 **不配置 `LAUNCH_DARKLY_API_KEY`**，直接使用 fallback。
+因此，私有化部署如果不需要动态灰度，最小方案是 **不配置 `LAUNCH_DARKLY_API_KEY`**，直接使用 fallback。LaunchDarkly 不是必需组件；它只在需要运行时灰度、按 team/template/cluster/sandbox 等上下文定向覆盖 flag 时才有保留价值。
+
+| 场景 | 当前能力 / 建议 | 继续阅读 |
+|------|------------------|----------|
+| 不需要动态灰度，只想无代码跑起来 | 不设置 `LAUNCH_DARKLY_API_KEY`，使用代码内 fallback 默认值 | [4.1 零改代码：使用 offline fallback](#41-零改代码使用-offline-fallback) |
+| 想确认每个 Flag 的默认值 | 以 `infra/packages/shared/pkg/featureflags/flags.go` 为准 | [2. Feature Flags 完整列表](#2-feature-flags-完整列表) |
+| 想用 YAML / Unleash / 自建服务管理 Flag | 这是可选代码改造，不是 `2026.28` 现有无代码能力 | [4. 私有化替代方案](#4-私有化替代方案) |
+| 只查 `LAUNCH_DARKLY_API_KEY` 配置 | 看运行时配置参考 | [`启动参数详解.md`](../reference/启动参数详解.md#阅读导航) |
 
 ---
 

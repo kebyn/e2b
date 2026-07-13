@@ -1,6 +1,6 @@
 # E2B Infra 私有化部署文档
 
-本仓库是 `e2b-dev/infra` 的中文私有化部署文档壳。根目录只维护本地部署分析、中文运行手册和少量增强部署资产；上游工程源码、IaC、CI、OpenAPI、脚本、测试和英文开发文档都以 `infra/` Git submodule 为准。
+本仓库是 `e2b-dev/infra` 的中文私有化部署文档壳。根目录只保留仓库入口、元文件、上游子模块和少量增强部署资产；中文部署分析、运行手册和参考文档统一维护在 `docs/` 子目录。上游工程源码、IaC、CI、OpenAPI、脚本、测试和英文开发文档都以 `infra/` Git submodule 为准。
 
 ## 初始化
 
@@ -26,9 +26,10 @@ make -C infra/packages/db migrate
 
 根目录保留：
 
-- 中文私有化部署、组件分析、启动参数和上游同步说明文档
-- `ansible/`、`daytona-k8s/`、`daytona-docs/` 等本地增强目录
-- `infra/` 子模块指针、`.gitmodules`、`LICENSE`、`AGENTS.md`
+- `README.md`、`AGENTS.md`、`LICENSE`、`.gitmodules`
+- `docs/` 中文文档目录
+- `ansible/`、`daytona-k8s/` 等本地增强部署资产目录
+- `infra/` 子模块指针
 
 上游工程内容直接从 `infra/` 引用：
 
@@ -41,19 +42,32 @@ make -C infra/packages/db migrate
 
 ## 阅读导航
 
+### 上游官方文档
+
 - 官方 Terraform 云部署路径：[`infra/self-host.md`](./infra/self-host.md)
 - 本地开发环境：[`infra/DEV-LOCAL.md`](./infra/DEV-LOCAL.md)
 - 上游开发说明：[`infra/DEV.md`](./infra/DEV.md)
 - 贡献说明：[`infra/CONTRIBUTING.md`](./infra/CONTRIBUTING.md)
-- 不修改代码完整私有化部署：[`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md#阅读导航)
-- 不修改代码高可用部署：[`不修改代码高可用部署方案.md`](./不修改代码高可用部署方案.md#5-高可用验证)
-- Kubernetes 私有化部署：[`K8s私有化部署指南.md`](./K8s私有化部署指南.md#阅读导航)
-- 启动参数和环境变量：[`启动参数详解.md`](./启动参数详解.md#阅读导航)
-- 核心组件职责：[`核心组件详解.md`](./核心组件详解.md#阅读导航)
-- 私有化组件取舍：[`私有化部署组件分析.md`](./私有化部署组件分析.md#阅读导航)
-- Feature Flags 私有化：[`FeatureFlags私有化部署方案.md`](./FeatureFlags私有化部署方案.md#1-阅读导航)
-- LaunchDarkly 私有化：[`LaunchDarkly私有化部署方案.md`](./LaunchDarkly私有化部署方案.md)
-- 上游 `2026.17` 到 `2026.28` 同步影响：[`上游同步说明-2026.17-to-2026.28.md`](./上游同步说明-2026.17-to-2026.28.md)
+
+### 私有化部署
+
+- 不修改代码完整私有化部署：[`docs/deployment/不修改代码完整部署指南.md`](./docs/deployment/不修改代码完整部署指南.md#阅读导航)
+- 不修改代码高可用部署：[`docs/deployment/不修改代码高可用部署方案.md`](./docs/deployment/不修改代码高可用部署方案.md#5-高可用验证)
+- Kubernetes 私有化部署：[`docs/deployment/K8s私有化部署指南.md`](./docs/deployment/K8s私有化部署指南.md#阅读导航)
+- Ansible 部署：[`docs/deployment/Ansible部署指南.md`](./docs/deployment/Ansible部署指南.md)
+
+### 参考与架构
+
+- 启动参数和环境变量：[`docs/reference/启动参数详解.md`](./docs/reference/启动参数详解.md#阅读导航)
+- 核心组件职责：[`docs/architecture/核心组件详解.md`](./docs/architecture/核心组件详解.md#阅读导航)
+- 私有化组件取舍：[`docs/architecture/私有化部署组件分析.md`](./docs/architecture/私有化部署组件分析.md#阅读导航)
+- Feature Flags / LaunchDarkly 私有化：[`docs/feature-flags/FeatureFlags私有化部署方案.md`](./docs/feature-flags/FeatureFlags私有化部署方案.md#1-阅读导航)
+
+### 上游同步与 Daytona
+
+- 上游 `2026.17` 到 `2026.28` 同步影响：[`docs/upstream/上游同步说明-2026.17-to-2026.28.md`](./docs/upstream/上游同步说明-2026.17-to-2026.28.md)
+- AI Agent Sandbox 产品对比：[`docs/daytona/sandbox-detailed-comparison.md`](./docs/daytona/sandbox-detailed-comparison.md)
+- Daytona Kubernetes 部署：[`docs/daytona/k8s-production-deployment.md`](./docs/daytona/k8s-production-deployment.md)
 
 ## 路径约定
 
