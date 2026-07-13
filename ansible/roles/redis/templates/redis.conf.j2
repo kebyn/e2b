@@ -20,7 +20,7 @@ requirepass {{ redis_requirepass }}
 
 # 主从复制
 {% if redis_role == 'slave' %}
-replicaof {{ hostvars[groups['redis'] | selectattr('redis_role', 'equalto', 'master') | first]['ansible_host'] }} {{ redis_port }}
+replicaof {{ redis_master_host }} {{ redis_port }}
 {% if redis_requirepass %}
 masterauth {{ redis_requirepass }}
 {% endif %}

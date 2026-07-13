@@ -59,18 +59,26 @@
 
 - name: 下载 Firecracker 内核
   shell: |
-    cd {{ e2b_kernels_dir }}
-    wget -q https://github.com/e2b-dev/infra/releases/download/kernel/vmlinux-6.1.158 -O vmlinux-6.1.158 || true
+    set -e
+    mkdir -p {{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}
+    wget -q https://storage.googleapis.com/e2b-prod-public-builds/kernels/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin \
+      -O {{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin \
+      || wget -q https://storage.googleapis.com/e2b-prod-public-builds/kernels/{{ default_kernel_version }}/vmlinux.bin \
+        -O {{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin
   args:
-    creates: "{{ e2b_kernels_dir }}/vmlinux-6.1.158"
+    creates: "{{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin"
 
 - name: 下载 Firecracker
   shell: |
-    cd {{ e2b_firecracker_dir }}
-    wget -q https://github.com/e2b-dev/infra/releases/download/firecracker/v1.12.1_a41d3fb -O firecracker || true
-    chmod +x firecracker || true
+    set -e
+    mkdir -p {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}
+    wget -q https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker \
+      -O {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker \
+      || wget -q https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/{{ default_firecracker_version }}/firecracker \
+        -O {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker
+    chmod +x {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker
   args:
-    creates: "{{ e2b_firecracker_dir }}/firecracker"
+    creates: "{{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker"
 
 - name: 配置 Orchestrator 环境变量
   template:
@@ -90,7 +98,9 @@
   run_once: true
 
 - name: 提交 Orchestrator Nomad 任务
-  shell: |
-    nomad job run -token={{ hostvars[groups['nomad_server'][0]]['nomad_acl_token'] }} /tmp/e2b-orchestrator.nomad
+  command: >-
+    nomad job run
+    {{ ('-token=' ~ (hostvars[groups['nomad_server'][0]]['nomad_acl_token'] | default(nomad_token | default('')))) if (nomad_acl_enabled | bool) else '' }}
+    /tmp/e2b-orchestrator.nomad
   delegate_to: "{{ groups['nomad_server'][0] }}"
   run_once: true

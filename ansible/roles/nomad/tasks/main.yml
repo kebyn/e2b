@@ -65,20 +65,36 @@
     delay: 5
     timeout: 60
 
-- name: 初始化 Nomad ACL (仅主服务器)
-  shell: |
-    nomad acl bootstrap -json 2>/dev/null || echo '{"SecretID":"already_initialized"}'
-  register: nomad_acl_bootstrap
+- name: 使用已配置的 Nomad Token
+  set_fact:
+    nomad_acl_token: "{{ nomad_token }}"
   when:
     - "'nomad_server' in group_names"
     - inventory_hostname == groups['nomad_server'][0]
+    - nomad_acl_enabled | bool
+    - (nomad_token | default('') | length) > 0
 
-- name: 保存 Nomad Token
+- name: 初始化 Nomad ACL (仅主服务器)
+  command: nomad acl bootstrap -json
+  register: nomad_acl_bootstrap
+  changed_when: true
+  when:
+    - "'nomad_server' in group_names"
+    - inventory_hostname == groups['nomad_server'][0]
+    - nomad_acl_enabled | bool
+    - (nomad_token | default('') | length) == 0
+    - nomad_acl_bootstrap_enabled | bool
+
+- name: 保存 Bootstrap 得到的 Nomad Token
   set_fact:
     nomad_acl_token: "{{ (nomad_acl_bootstrap.stdout | from_json).SecretID }}"
   when:
     - "'nomad_server' in group_names"
     - inventory_hostname == groups['nomad_server'][0]
+    - nomad_acl_enabled | bool
+    - (nomad_token | default('') | length) == 0
+    - nomad_acl_bootstrap is defined
+    - nomad_acl_bootstrap.stdout is defined
 
 - name: 创建 Nomad 策略
   copy:
@@ -94,10 +110,13 @@
   when:
     - "'nomad_server' in group_names"
     - inventory_hostname == groups['nomad_server'][0]
+    - nomad_acl_enabled | bool
+    - (nomad_acl_token | default('') | length) > 0
 
 - name: 应用 Nomad 策略
-  shell: |
-    nomad acl policy apply -token {{ hostvars[groups['nomad_server'][0]]['nomad_acl_token'] }} e2b /tmp/e2b-policy.hcl
+  command: nomad acl policy apply -token={{ nomad_acl_token }} e2b /tmp/e2b-policy.hcl
   when:
     - "'nomad_server' in group_names"
     - inventory_hostname == groups['nomad_server'][0]
+    - nomad_acl_enabled | bool
+    - (nomad_acl_token | default('') | length) > 0

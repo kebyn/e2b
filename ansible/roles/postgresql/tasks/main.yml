@@ -94,7 +94,7 @@
 - name: "从节点: 基础备份"
   become_user: postgres
   shell: |
-    pg_basebackup -h {{ hostvars[groups['postgresql'] | selectattr('pg_role', 'equalto', 'primary') | first]['ansible_host'] }} \
+    pg_basebackup -h {{ postgres_primary_host }} \
       -D /var/lib/postgresql/{{ postgres_version }}/main \
       -U replicator -P -v -R -X stream
   environment:
