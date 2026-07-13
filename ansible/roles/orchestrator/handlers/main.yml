@@ -1,7 +1,12 @@
 ---
 - name: restart orchestrator
-  command: >-
-    nomad job restart
-    {{ ('-token=' ~ (hostvars[groups['nomad_server'][0]]['nomad_acl_token'] | default(nomad_token | default('')))) if (nomad_acl_enabled | bool) else '' }}
-    e2b-orchestrator
+  command: nomad job restart -yes e2b-orchestrator
+  environment:
+    NOMAD_TOKEN: >-
+      {{
+        hostvars[groups['nomad_server'][0]]['nomad_acl_token']
+        | default(nomad_effective_token | default(nomad_token | default('')))
+      }}
+  no_log: "{{ nomad_acl_enabled | bool }}"
   delegate_to: "{{ groups['nomad_server'][0] }}"
+  run_once: true

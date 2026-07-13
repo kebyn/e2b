@@ -9,7 +9,8 @@ Type=simple
 User=e2b
 Group=e2b
 WorkingDirectory=/opt/e2b/dashboard
-ExecStart=/usr/bin/npm start
+Environment=HOME=/opt/e2b/dashboard
+ExecStart=/usr/local/bin/bun run start
 Restart=always
 RestartSec=10
 LimitNOFILE=65536

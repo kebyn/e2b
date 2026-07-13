@@ -1,6 +1,6 @@
 # Redis 配置
 
-bind 0.0.0.0
+bind 127.0.0.1 {{ ansible_host }}
 port {{ redis_port }}
 daemonize no
 supervised systemd

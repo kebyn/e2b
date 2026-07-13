@@ -1,22 +1,108 @@
 ---
 # Dashboard Frontend 部署
-# 说明: 基于 Next.js，需要从 GitHub 克隆构建或使用 Docker
+# 说明: 当前上游使用 Bun 构建和运行 Next.js。
 
-- name: 安装 Node.js
+- name: 校验 Dashboard 构建内存
+  assert:
+    that:
+      - (ansible_facts['memtotal_mb'] | int) >= (dashboard_build_min_memory_mb | int)
+    fail_msg: >-
+      Dashboard 构建至少需要 {{ dashboard_build_min_memory_mb }} MiB 内存，
+      当前节点只有 {{ ansible_facts['memtotal_mb'] }} MiB。
+  when: dashboard_install_method == 'source'
+
+- name: 安装 Dashboard 构建依赖
   apt:
     name:
-      - nodejs
-      - npm
+      - git
     state: present
     update_cache: yes
+  when: dashboard_install_method == 'source'
+
+- name: 创建 Bun 安装目录
+  file:
+    path: "{{ e2b_base_dir }}/tools/bun-{{ dashboard_bun_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: dashboard_install_method == 'source'
+
+- name: 检查 Bun {{ dashboard_bun_version }}
+  stat:
+    path: >-
+      {{ e2b_base_dir }}/tools/bun-{{ dashboard_bun_version }}/bun-linux-{{ dashboard_bun_architecture }}/bun
+  register: dashboard_bun_binary
+  when: dashboard_install_method == 'source'
+
+- name: 读取 Bun 版本
+  command: >-
+    {{ e2b_base_dir }}/tools/bun-{{ dashboard_bun_version }}/bun-linux-{{ dashboard_bun_architecture }}/bun --version
+  register: dashboard_bun_installed_version
+  changed_when: false
+  failed_when: false
+  when:
+    - dashboard_install_method == 'source'
+    - dashboard_bun_binary.stat.exists
+
+- name: 判断是否需要安装 Bun
+  set_fact:
+    dashboard_bun_install_required: >-
+      {{
+        not dashboard_bun_binary.stat.exists
+        or (dashboard_bun_installed_version.stdout | default('') | trim) != dashboard_bun_version
+      }}
+  when: dashboard_install_method == 'source'
+
+- name: 安装 Bun {{ dashboard_bun_version }}
+  when:
+    - dashboard_install_method == 'source'
+    - dashboard_bun_install_required | bool
+  block:
+    - name: 下载 Bun
+      get_url:
+        url: >-
+          https://github.com/oven-sh/bun/releases/download/bun-v{{ dashboard_bun_version }}/bun-linux-{{ dashboard_bun_architecture }}.zip
+        dest: "/tmp/bun-linux-{{ dashboard_bun_architecture }}-{{ dashboard_bun_version }}.zip"
+        mode: '0644'
+        force: true
+        checksum: >-
+          sha256:https://github.com/oven-sh/bun/releases/download/bun-v{{ dashboard_bun_version }}/SHASUMS256.txt
+
+    - name: 解压 Bun
+      unarchive:
+        src: "/tmp/bun-linux-{{ dashboard_bun_architecture }}-{{ dashboard_bun_version }}.zip"
+        dest: "{{ e2b_base_dir }}/tools/bun-{{ dashboard_bun_version }}"
+        remote_src: true
+
+    - name: 删除 Bun 临时压缩包
+      file:
+        path: "/tmp/bun-linux-{{ dashboard_bun_architecture }}-{{ dashboard_bun_version }}.zip"
+        state: absent
+
+- name: 校验 Bun 版本
+  command: >-
+    {{ e2b_base_dir }}/tools/bun-{{ dashboard_bun_version }}/bun-linux-{{ dashboard_bun_architecture }}/bun --version
+  register: dashboard_bun_version_check
+  changed_when: false
+  failed_when: (dashboard_bun_version_check.stdout | trim) != dashboard_bun_version
+  when: dashboard_install_method == 'source'
+
+- name: 激活 Bun
+  file:
+    src: >-
+      {{ e2b_base_dir }}/tools/bun-{{ dashboard_bun_version }}/bun-linux-{{ dashboard_bun_architecture }}/bun
+    dest: /usr/local/bin/bun
+    state: link
   when: dashboard_install_method == 'source'
 
 - name: 克隆 Dashboard 仓库
   git:
     repo: https://github.com/e2b-dev/dashboard.git
     dest: /opt/e2b/dashboard
-    version: main
+    version: "{{ dashboard_version }}"
   when: dashboard_install_method == 'source'
+  notify: restart dashboard
 
 - name: 配置 Dashboard 环境变量
   template:
@@ -27,18 +113,34 @@
     mode: '0640'
   when: dashboard_install_method == 'source'
   notify: restart dashboard
+  no_log: true
+
+- name: 设置 Dashboard 目录权限
+  file:
+    path: /opt/e2b/dashboard
+    owner: e2b
+    group: e2b
+    recurse: true
+  when: dashboard_install_method == 'source'
 
 - name: 安装依赖
-  npm:
-    path: /opt/e2b/dashboard
-    state: present
+  become_user: e2b
+  command: /usr/local/bin/bun install --frozen-lockfile
+  args:
+    chdir: /opt/e2b/dashboard
+  environment:
+    HOME: /opt/e2b/dashboard
   when: dashboard_install_method == 'source'
 
 - name: 构建 Dashboard
-  command: npm run build
+  become_user: e2b
+  command: /usr/local/bin/bun run build
   args:
     chdir: /opt/e2b/dashboard
+  environment:
+    HOME: /opt/e2b/dashboard
   when: dashboard_install_method == 'source'
+  notify: restart dashboard
 
 - name: 创建 Dashboard Systemd 服务
   template:
