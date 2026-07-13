@@ -4,6 +4,7 @@
 job "e2b-template-manager" {
   datacenters = ["{{ nomad_datacenter }}"]
   type        = "service"
+  node_pool   = "{{ template_manager_nomad_node_pool }}"
 
   group "template-manager" {
     count = {{ template_manager_count | default(2) }}
@@ -13,8 +14,21 @@ job "e2b-template-manager" {
       port "proxy" { static = {{ orchestrator_proxy_port }} }
     }
 
+    service {
+      name     = "template-manager"
+      port     = "grpc"
+      provider = "nomad"
+
+      check {
+        type     = "http"
+        path     = "/health"
+        interval = "20s"
+        timeout  = "5s"
+      }
+    }
+
     task "template-manager" {
-      driver = "exec"
+      driver = "raw_exec"
 
       config {
         command = "/usr/local/bin/orchestrator"
@@ -23,22 +37,33 @@ job "e2b-template-manager" {
       env {
         NODE_ID                     = "${node.unique.name}"
         NODE_IP                     = "${attr.unique.network.ip-address}"
-        ENVIRONMENT                 = "{{ environment }}"
+        ENVIRONMENT                 = "{{ e2b_environment }}"
         ORCHESTRATOR_SERVICES       = "template-manager"              # 关键区别
         # ⚠️ 格式：host:port，不支持 redis:// 前缀；Sentinel 需挂 HAProxy
         REDIS_URL                   = "{{ redis_effective_url }}"
         REDIS_CLUSTER_URL           = "{{ redis_cluster_url }}"
         REDIS_TLS_CA_BASE64         = "{{ redis_tls_ca_base64 }}"
         REDIS_POOL_SIZE             = "{{ orchestrator_redis_pool_size }}"
+        REDIS_MIN_IDLE_CONNS        = "{{ orchestrator_redis_min_idle_conns }}"
         TEMPLATE_BUCKET_NAME        = "{{ template_bucket_name }}"
         BUILD_CACHE_BUCKET_NAME     = "{{ build_cache_bucket_name }}"
         STORAGE_PROVIDER            = "{{ storage_provider }}"
+        ARTIFACTS_REGISTRY_PROVIDER = "{{ artifacts_registry_provider }}"
+        PROVIDER                    = "{{ orchestrator_provider }}"
+        GOOGLE_SERVICE_ACCOUNT_BASE64 = "{{ google_service_account_base64 }}"
+        GCP_PROJECT_ID              = "{{ gcp_project_id }}"
+        GCP_REGION                  = "{{ gcp_region }}"
+        GCP_DOCKER_REPOSITORY_NAME  = "{{ gcp_docker_repository_name }}"
         LOCAL_TEMPLATE_STORAGE_BASE_PATH = "{{ local_template_storage_base_path }}"
         LOCAL_BUILD_CACHE_STORAGE_BASE_PATH = "{{ local_build_cache_storage_base_path }}"
+        LOCAL_UPLOAD_BASE_URL        = "http://${attr.unique.network.ip-address}:{{ orchestrator_grpc_port }}"
         AWS_ENDPOINT_URL            = "{{ aws_endpoint_url }}"
         S3_USE_PATH_STYLE           = "{{ s3_use_path_style }}"
         DEFAULT_FIRECRACKER_VERSION = "{{ default_firecracker_version }}"
         DEFAULT_KERNEL_VERSION      = "{{ default_kernel_version }}"
+        BUSYBOX_VERSION             = "{{ busybox_version }}"
+        DOMAIN_NAME                 = "{{ domain_name }}"
+        LAUNCH_DARKLY_API_KEY       = "{{ launchdarkly_api_key }}"
         USE_LOCAL_NAMESPACE_STORAGE = "true"
         ORCHESTRATOR_BASE_PATH      = "{{ e2b_orchestrator_path }}"
         SANDBOX_DIR                 = "{{ e2b_fc_vm_dir }}"
@@ -50,7 +75,7 @@ job "e2b-template-manager" {
         GRPC_PORT                   = "{{ orchestrator_grpc_port }}"
         PROXY_PORT                  = "{{ orchestrator_proxy_port }}"
         {% if clickhouse_enabled %}
-        CLICKHOUSE_CONNECTION_STRING = "clickhouse://{{ clickhouse_user }}:{{ clickhouse_password }}@{{ hostvars[groups['clickhouse'][0]]['ansible_host'] }}:{{ clickhouse_port }}/{{ clickhouse_database }}"
+        CLICKHOUSE_CONNECTION_STRING = "clickhouse://{{ clickhouse_user | urlencode | replace('/', '%2F') }}:{{ clickhouse_password | urlencode | replace('/', '%2F') }}@{{ hostvars[groups['clickhouse'][0]]['ansible_host'] }}:{{ clickhouse_port }}/{{ clickhouse_database | urlencode | replace('/', '%2F') }}"
         {% endif %}
         CLICKHOUSE_CONNECTION_STRINGS = "{{ clickhouse_connection_strings | default([]) | join(';') }}"
         {% if loki_enabled %}
@@ -59,8 +84,9 @@ job "e2b-template-manager" {
       }
 
       resources {
-        cpu    = 4000
-        memory = 8192
+        cpu        = 4000
+        memory     = 1024
+        memory_max = -1
       }
     }
   }

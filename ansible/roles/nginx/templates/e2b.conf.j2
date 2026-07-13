@@ -14,6 +14,29 @@ upstream e2b_proxy {
     {% endfor %}
 }
 
+upstream e2b_api_grpc {
+    least_conn;
+    {% for host in groups['api'] %}
+    server {{ hostvars[host]['ansible_host'] }}:{{ api_internal_grpc_port }} max_fails=3 fail_timeout=30s;
+    {% endfor %}
+}
+
+{% if dashboard_enabled | default(false) %}
+upstream e2b_dashboard_api {
+    least_conn;
+    {% for host in groups['dashboard_api'] %}
+    server {{ hostvars[host]['ansible_host'] }}:{{ dashboard_api_port }} max_fails=3 fail_timeout=30s;
+    {% endfor %}
+}
+
+upstream e2b_dashboard {
+    least_conn;
+    {% for host in groups['dashboard'] %}
+    server {{ hostvars[host]['ansible_host'] }}:{{ dashboard_port }} max_fails=3 fail_timeout=30s;
+    {% endfor %}
+}
+{% endif %}
+
 # API 服务
 server {
     listen 80;
@@ -24,7 +47,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto {{ public_url_scheme }};
 
         proxy_connect_timeout 5s;
         proxy_read_timeout 300s;
@@ -38,6 +61,21 @@ server {
     }
 }
 
+# Client Proxy 调用的 API internal gRPC 入口
+server {
+    listen {{ api_internal_grpc_port }} http2;
+    server_name {{ api_domain }};
+
+    location / {
+        grpc_pass grpc://e2b_api_grpc;
+        grpc_set_header Host $host;
+        grpc_set_header X-Real-IP $remote_addr;
+        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        grpc_read_timeout 3600s;
+        grpc_send_timeout 3600s;
+    }
+}
+
 # Sandbox 代理 (通配符子域)
 server {
     listen 80;
@@ -48,7 +86,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto {{ public_url_scheme }};
 
         # WebSocket 支持
         proxy_http_version 1.1;
@@ -66,3 +104,33 @@ server {
         access_log off;
     }
 }
+
+{% if dashboard_enabled | default(false) %}
+# Dashboard API
+server {
+    listen 80;
+    server_name {{ dashboard_api_domain }};
+
+    location / {
+        proxy_pass http://e2b_dashboard_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto {{ public_url_scheme }};
+    }
+}
+
+# Dashboard 前端
+server {
+    listen 80;
+    server_name {{ dashboard_domain }};
+
+    location / {
+        proxy_pass http://e2b_dashboard;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto {{ public_url_scheme }};
+    }
+}
+{% endif %}

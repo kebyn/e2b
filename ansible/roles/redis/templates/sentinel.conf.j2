@@ -1,5 +1,6 @@
 # Redis Sentinel 配置
 
+bind 127.0.0.1 {{ ansible_host }}
 port {{ redis_sentinel_port }}
 daemonize no
 supervised systemd

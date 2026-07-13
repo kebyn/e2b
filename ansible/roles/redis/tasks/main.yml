@@ -55,6 +55,9 @@
     group: redis
     mode: '0750'
 
+- name: 立即应用 Redis 配置变更
+  meta: flush_handlers
+
 - name: 启动 Redis
   systemd:
     name: redis-server

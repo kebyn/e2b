@@ -4,12 +4,16 @@
 # ============================================================
 
 # 环境标识
-environment: prod
+e2b_environment: prod
 
 # 域名配置
 domain_name: e2b.example.com
+public_url_scheme: http  # 外部 TLS 终止时改为 https
 api_domain: "api.{{ domain_name }}"
+sandbox_base_domain: "sandbox.{{ domain_name }}"
 sandbox_domain: "*.sandbox.{{ domain_name }}"
+dashboard_domain: "dashboard.{{ domain_name }}"
+dashboard_api_domain: "dashboard-api.{{ domain_name }}"
 
 # Inventory 派生变量
 ansible_architecture_normalized: >-
@@ -19,7 +23,10 @@ ansible_architecture_normalized: >-
       'amd64': 'amd64',
       'aarch64': 'arm64',
       'arm64': 'arm64'
-    }.get(ansible_architecture | default('amd64'), ansible_architecture | default('amd64'))
+    }.get(
+      ansible_facts['architecture'] | default('amd64'),
+      ansible_facts['architecture'] | default('amd64')
+    )
   }}
 postgres_primary_host: >-
   {{
@@ -55,6 +62,13 @@ postgres_port: 5432
 postgres_max_connections: 200
 postgres_shared_buffers: "4GB"
 postgres_effective_cache_size: "12GB"
+postgres_replica_rebuild: false
+postgres_migration_enabled: true
+goose_version: "3.27.2"
+goose_architecture_normalized: >-
+  {{ 'x86_64' if ansible_architecture_normalized == 'amd64' else ansible_architecture_normalized }}
+postgres_connection_string: >-
+  postgresql://{{ postgres_user | urlencode | replace('/', '%2F') }}:{{ postgres_password | urlencode | replace('/', '%2F') }}@{{ postgres_primary_host }}:{{ postgres_port }}/{{ postgres_database | urlencode | replace('/', '%2F') }}?sslmode=disable
 
 # ============================================================
 # Redis 配置 (必需)
@@ -66,11 +80,12 @@ redis_version: "7"
 redis_url: ""              # 推荐填写，例如 redis-vip.example.com:6379
 redis_host: ""             # 兼容旧配置：Redis 主节点或 HAProxy 地址，不含端口
 redis_port: 6379
-redis_cluster_url: ""      # Redis Cluster 模式，例如 node1:6379,node2:6379
+redis_cluster_url: ""      # Redis Cluster 模式的单个引导端点，例如 node1:6379
 redis_tls_ca_base64: ""
 redis_sentinel_port: 26379
 redis_maxmemory: "2gb"
-redis_requirepass: "CHANGE_ME_REDIS_PASSWORD"
+# 当前上游二进制只接受 host:port，不能向 Redis 发送密码。内置 Redis 必须依靠私网隔离。
+redis_requirepass: ""
 redis_effective_url: >-
   {{
     redis_url
@@ -100,6 +115,9 @@ nomad_datacenter: dc1
 nomad_acl_enabled: true
 nomad_token: ""
 nomad_acl_bootstrap_enabled: true
+nomad_acl_token_file: /etc/nomad.d/e2b-management.token
+orchestrator_nomad_node_pool: default
+template_manager_nomad_node_pool: build
 
 # ============================================================
 # 应用配置 (必需)
@@ -110,16 +128,22 @@ nomad_acl_bootstrap_enabled: true
 template_bucket_name: e2b-templates
 build_cache_bucket_name: e2b-build-cache
 storage_provider: Local    # 私有化默认 Local；云部署改为 GCPBucket 或 AWSBucket
+artifacts_registry_provider: Local  # Local 使用构建节点上的 Docker daemon
+local_artifacts_replicated: false
+orchestrator_provider: gcp
+local_storage_shared: false  # 多运行/构建节点使用 Local 时，确认同一路径已由 NFS 等共享后改为 true
 local_template_storage_base_path: "{{ e2b_base_dir }}/storage/templates"
 local_build_cache_storage_base_path: "{{ e2b_base_dir }}/storage/build-cache"
 aws_endpoint_url: ""       # S3 兼容服务（如 MinIO）可填写自定义 endpoint
 s3_use_path_style: false   # S3 兼容服务通常需要 true
 gcp_project_id: ""         # 仅 GCPBucket 时需要
 gcp_region: us-central1    # 仅 GCPBucket 时需要
+gcp_docker_repository_name: ""
 google_service_account_base64: ""  # 仅 GCPBucket 时需要
 
 # 认证配置
 admin_token: "CHANGE_ME_ADMIN_TOKEN"
+sandbox_access_token_hash_seed: "CHANGE_ME_SANDBOX_ACCESS_TOKEN_HASH_SEED"
 
 # Volume Token 配置
 volume_token_issuer: "{{ domain_name }}"
@@ -133,15 +157,24 @@ volume_token_signing_key_name: "prod-2024"
 
 # 是否部署 Dashboard
 dashboard_enabled: false
-dashboard_install_method: source  # source 或 docker
+dashboard_install_method: source  # 当前 Ansible role 仅实现 source
+dashboard_version: 590f6cf534ba58645caf4233d06d497fe1614fb0
+dashboard_bun_version: "1.2.0"
+dashboard_build_min_memory_mb: 6144
+dashboard_bun_architecture: >-
+  {{ 'x64' if ansible_architecture_normalized == 'amd64' else 'aarch64' }}
+dashboard_session_secret: "CHANGE_ME_DASHBOARD_SESSION_SECRET"
+dashboard_ory_oauth2_client_id: ""
+dashboard_ory_oauth2_client_secret: ""
+dashboard_ory_oauth2_cli_client_id: ""
+dashboard_ory_oauth2_audience: ""
+dashboard_ory_hydra_public_url: "{{ ory_issuer_url }}"
+template_manager_enabled: false
+template_manager_count: 1
 
 # Dashboard 端口
 dashboard_api_port: 3010
 dashboard_port: 3000
-
-# Dashboard 前端旧 Supabase 变量（仅旧 dashboard 前端需要；当前 API/Dashboard API 使用 Auth Provider/Ory）
-supabase_url: ""
-supabase_anon_key: ""
 
 # ============================================================
 # 可选组件配置
@@ -180,6 +213,8 @@ e2b_envd_path: "{{ e2b_base_dir }}/envd/envd"
 e2b_busybox_dir: "{{ e2b_base_dir }}/busybox"
 default_firecracker_version: v1.14.1_431f1fc
 default_kernel_version: vmlinux-6.1.158
+busybox_version: "1.36.1"
+nbd_max_devices: 256
 
 # ============================================================
 # 端口配置
@@ -211,9 +246,13 @@ api_edge_grpc_oauth_token_url: ""
 # ============================================================
 # 资源配置
 # ============================================================
-api_cpu_limit: "2"
-api_memory_limit: "2Gi"
-proxy_cpu_limit: "1"
-proxy_memory_limit: "1Gi"
+api_cpu_limit: "200%"
+api_memory_limit: "2G"
+proxy_cpu_limit: "100%"
+proxy_memory_limit: "1G"
+dashboard_api_cpu_limit: "100%"
+dashboard_api_memory_limit: "1G"
+dashboard_cpu_limit: "200%"
+dashboard_memory_limit: "1G"
 orchestrator_cpu_limit: "4"
 orchestrator_memory_limit: "8Gi"

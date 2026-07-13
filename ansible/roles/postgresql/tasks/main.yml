@@ -1,6 +1,27 @@
 ---
 # PostgreSQL 安装和配置
 
+- name: 添加 PostgreSQL 官方 APT 仓库
+  deb822_repository:
+    name: postgresql-pgdg
+    types:
+      - deb
+    uris:
+      - https://apt.postgresql.org/pub/repos/apt
+    suites:
+      - "{{ ansible_distribution_release }}-pgdg"
+    components:
+      - main
+    signed_by: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    install_python_debian: true
+    state: present
+  register: postgresql_apt_repository
+
+- name: 更新 PostgreSQL APT 缓存
+  apt:
+    update_cache: yes
+  when: postgresql_apt_repository.changed
+
 - name: 安装 PostgreSQL {{ postgres_version }}
   apt:
     name:
@@ -29,6 +50,9 @@
     mode: '0640'
   notify: restart postgresql
 
+- name: 立即应用 PostgreSQL 配置变更
+  meta: flush_handlers
+
 - name: 启动 PostgreSQL
   systemd:
     name: postgresql
@@ -49,6 +73,7 @@
     role_attr_flags: CREATEDB,SUPERUSER
     state: present
   when: pg_role == 'primary'
+  no_log: true
 
 - name: 创建数据库
   become_user: postgres
@@ -67,43 +92,111 @@
     role_attr_flags: REPLICATION,LOGIN
     state: present
   when: pg_role == 'primary'
+  no_log: true
 
-- name: 运行数据库迁移 (仅主节点)
-  shell: |
-    cd /opt/infra
-    make -C infra/packages/db migrate
-  environment:
-    POSTGRES_CONNECTION_STRING: "postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:{{ postgres_port }}/{{ postgres_database }}?sslmode=disable"
+- name: 安装 Goose 数据库迁移工具 (仅主节点)
+  get_url:
+    url: >-
+      https://github.com/pressly/goose/releases/download/v{{ goose_version }}/goose_linux_{{ goose_architecture_normalized }}
+    dest: /usr/local/bin/goose
+    mode: '0755'
+    force: true
+    checksum: >-
+      sha256:https://github.com/pressly/goose/releases/download/v{{ goose_version }}/checksums.txt
   when:
     - pg_role == 'primary'
-    - migration_enabled | default(false)
-  run_once: true
+    - postgres_migration_enabled | bool
+
+- name: 复制数据库迁移文件 (仅主节点)
+  copy:
+    src: "{{ playbook_dir }}/../../infra/packages/db/migrations/"
+    dest: "{{ e2b_base_dir }}/db-migrations/"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+    directory_mode: '0755'
+  when:
+    - pg_role == 'primary'
+    - postgres_migration_enabled | bool
+
+- name: 运行数据库迁移 (仅主节点)
+  become_user: postgres
+  command:
+    argv:
+      - /usr/local/bin/goose
+      - -table
+      - _migrations
+      - -dir
+      - "{{ e2b_base_dir }}/db-migrations"
+      - up
+  environment:
+    GOOSE_DRIVER: postgres
+    GOOSE_DBSTRING: >-
+      postgresql://{{ postgres_user | urlencode | replace('/', '%2F') }}:{{ postgres_password | urlencode | replace('/', '%2F') }}@localhost:{{ postgres_port }}/{{ postgres_database | urlencode | replace('/', '%2F') }}?sslmode=disable
+  when:
+    - pg_role == 'primary'
+    - postgres_migration_enabled | bool
+  no_log: true
+
+- name: "从节点: 检查现有数据目录"
+  stat:
+    path: "/var/lib/postgresql/{{ postgres_version }}/main/standby.signal"
+  register: postgres_replica_data
+  when: pg_role == 'replica'
+
+- name: "从节点: 判断是否需要初始化"
+  set_fact:
+    postgres_replica_needs_init: >-
+      {{
+        (postgres_replica_rebuild | bool)
+        or not (postgres_replica_data.stat.exists | default(false))
+      }}
+  when: pg_role == 'replica'
 
 - name: "从节点: 停止 PostgreSQL"
   systemd:
     name: postgresql
     state: stopped
-  when: pg_role == 'replica'
+  when:
+    - pg_role == 'replica'
+    - postgres_replica_needs_init | bool
 
 - name: "从节点: 清空数据目录"
   file:
     path: "/var/lib/postgresql/{{ postgres_version }}/main"
     state: absent
-  when: pg_role == 'replica'
+  when:
+    - pg_role == 'replica'
+    - postgres_replica_needs_init | bool
 
 - name: "从节点: 基础备份"
   become_user: postgres
-  shell: |
-    pg_basebackup -h {{ postgres_primary_host }} \
-      -D /var/lib/postgresql/{{ postgres_version }}/main \
-      -U replicator -P -v -R -X stream
+  command:
+    argv:
+      - pg_basebackup
+      - -h
+      - "{{ postgres_primary_host }}"
+      - -D
+      - "/var/lib/postgresql/{{ postgres_version }}/main"
+      - -U
+      - replicator
+      - -P
+      - -v
+      - -R
+      - -X
+      - stream
   environment:
     PGPASSWORD: "{{ postgres_password }}"
-  when: pg_role == 'replica'
+  when:
+    - pg_role == 'replica'
+    - postgres_replica_needs_init | bool
+  no_log: true
 
 - name: "从节点: 启动 PostgreSQL"
   systemd:
     name: postgresql
     state: started
     enabled: yes
-  when: pg_role == 'replica'
+  when:
+    - pg_role == 'replica'
+    - postgres_replica_needs_init | bool

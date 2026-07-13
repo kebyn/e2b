@@ -25,6 +25,7 @@
     group: e2b
     mode: '0640'
   notify: restart dashboard-api
+  no_log: true
 
 - name: 创建 Dashboard API Systemd 服务
   template:

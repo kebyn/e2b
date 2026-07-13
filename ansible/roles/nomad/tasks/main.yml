@@ -1,18 +1,69 @@
 ---
 # Nomad 安装和配置
 
-- name: 下载 Nomad {{ nomad_version }}
-  get_url:
-    url: "https://releases.hashicorp.com/nomad/{{ nomad_version }}/nomad_{{ nomad_version }}_linux_amd64.zip"
-    dest: "/tmp/nomad_{{ nomad_version }}_linux_amd64.zip"
-    mode: '0644'
+- name: 检查 Nomad 是否已安装
+  stat:
+    path: /usr/local/bin/nomad
+  register: nomad_binary
 
-- name: 解压 Nomad
-  unarchive:
-    src: "/tmp/nomad_{{ nomad_version }}_linux_amd64.zip"
-    dest: /usr/local/bin/
-    remote_src: yes
-    creates: /usr/local/bin/nomad
+- name: 读取已安装的 Nomad 版本
+  command: /usr/local/bin/nomad version
+  register: nomad_installed_version
+  changed_when: false
+  failed_when: false
+  when: nomad_binary.stat.exists
+
+- name: 判断是否需要安装 Nomad
+  set_fact:
+    nomad_install_required: >-
+      {{
+        not nomad_binary.stat.exists
+        or (
+          nomad_installed_version.stdout_lines
+          | default([])
+          | first
+          | default('')
+        ) != ('Nomad v' ~ nomad_version)
+      }}
+
+- name: 安装 Nomad {{ nomad_version }}
+  when: nomad_install_required | bool
+  block:
+    - name: 下载 Nomad 压缩包
+      get_url:
+        url: "https://releases.hashicorp.com/nomad/{{ nomad_version }}/nomad_{{ nomad_version }}_linux_{{ ansible_architecture_normalized }}.zip"
+        dest: "/tmp/nomad_{{ nomad_version }}_linux_{{ ansible_architecture_normalized }}.zip.part"
+        mode: '0644'
+        force: true
+        checksum: "sha256:https://releases.hashicorp.com/nomad/{{ nomad_version }}/nomad_{{ nomad_version }}_SHA256SUMS"
+
+    - name: 校验 Nomad 压缩包非空
+      command: "test -s /tmp/nomad_{{ nomad_version }}_linux_{{ ansible_architecture_normalized }}.zip.part"
+      changed_when: false
+
+    - name: 解压 Nomad
+      unarchive:
+        src: "/tmp/nomad_{{ nomad_version }}_linux_{{ ansible_architecture_normalized }}.zip.part"
+        dest: /usr/local/bin/
+        remote_src: yes
+      notify: restart nomad
+
+    - name: 设置 Nomad 可执行权限
+      file:
+        path: /usr/local/bin/nomad
+        mode: '0755'
+
+    - name: 删除 Nomad 临时压缩包
+      file:
+        path: "/tmp/nomad_{{ nomad_version }}_linux_{{ ansible_architecture_normalized }}.zip.part"
+        state: absent
+
+- name: 校验 Nomad 版本
+  command: /usr/local/bin/nomad version
+  register: nomad_version_check
+  changed_when: false
+  failed_when: >-
+    (nomad_version_check.stdout_lines | first | default('')) != ('Nomad v' ~ nomad_version)
 
 - name: 创建 Nomad 配置目录
   file:
@@ -53,6 +104,9 @@
   systemd:
     daemon_reload: yes
 
+- name: 立即应用 Nomad 配置变更
+  meta: flush_handlers
+
 - name: 启动 Nomad
   systemd:
     name: nomad
@@ -65,36 +119,65 @@
     delay: 5
     timeout: 60
 
+- name: 等待 Nomad Server 选出 Leader
+  uri:
+    url: http://127.0.0.1:4646/v1/status/leader
+    method: GET
+    return_content: true
+    status_code: 200
+  register: nomad_leader_status
+  until:
+    - (nomad_leader_status.content | default('') | trim) not in ['', '""']
+  retries: 12
+  delay: 5
+  changed_when: false
+  when:
+    - "'nomad_server' in group_names"
+    - inventory_hostname == groups['nomad_server'][0]
+
 - name: 使用已配置的 Nomad Token
   set_fact:
-    nomad_acl_token: "{{ nomad_token }}"
+    nomad_acl_token: "{{ nomad_effective_token }}"
   when:
     - "'nomad_server' in group_names"
     - inventory_hostname == groups['nomad_server'][0]
     - nomad_acl_enabled | bool
-    - (nomad_token | default('') | length) > 0
+    - (nomad_effective_token | default('') | length) > 0
+  no_log: true
 
-- name: 初始化 Nomad ACL (仅主服务器)
-  command: nomad acl bootstrap -json
-  register: nomad_acl_bootstrap
-  changed_when: true
+- name: 首次初始化并持久化 Nomad ACL Token
   when:
     - "'nomad_server' in group_names"
     - inventory_hostname == groups['nomad_server'][0]
     - nomad_acl_enabled | bool
-    - (nomad_token | default('') | length) == 0
+    - (nomad_effective_token | default('') | length) == 0
     - nomad_acl_bootstrap_enabled | bool
+  block:
+    - name: Bootstrap Nomad ACL
+      command: nomad acl bootstrap -json
+      register: nomad_acl_bootstrap
+      changed_when: true
+      no_log: true
 
-- name: 保存 Bootstrap 得到的 Nomad Token
-  set_fact:
-    nomad_acl_token: "{{ (nomad_acl_bootstrap.stdout | from_json).SecretID }}"
-  when:
-    - "'nomad_server' in group_names"
-    - inventory_hostname == groups['nomad_server'][0]
-    - nomad_acl_enabled | bool
-    - (nomad_token | default('') | length) == 0
-    - nomad_acl_bootstrap is defined
-    - nomad_acl_bootstrap.stdout is defined
+    - name: 持久化 Nomad ACL Token
+      copy:
+        content: "{{ (nomad_acl_bootstrap.stdout | from_json).SecretID }}\n"
+        dest: "{{ nomad_acl_token_file }}"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+
+    - name: 保存 Bootstrap 得到的 Nomad ACL Token
+      set_fact:
+        nomad_acl_token: "{{ (nomad_acl_bootstrap.stdout | from_json).SecretID }}"
+      no_log: true
+  rescue:
+    - name: 报告 Nomad ACL Token 丢失
+      fail:
+        msg: >-
+          Nomad ACL 初始化失败。若集群已经初始化，请恢复 {{ nomad_acl_token_file }}
+          或在 inventory 中设置 nomad_token；为避免生成第二个管理令牌，本次部署已停止。
 
 - name: 创建 Nomad 策略
   copy:
@@ -114,7 +197,10 @@
     - (nomad_acl_token | default('') | length) > 0
 
 - name: 应用 Nomad 策略
-  command: nomad acl policy apply -token={{ nomad_acl_token }} e2b /tmp/e2b-policy.hcl
+  command: nomad acl policy apply e2b /tmp/e2b-policy.hcl
+  environment:
+    NOMAD_TOKEN: "{{ nomad_acl_token }}"
+  no_log: true
   when:
     - "'nomad_server' in group_names"
     - inventory_hostname == groups['nomad_server'][0]

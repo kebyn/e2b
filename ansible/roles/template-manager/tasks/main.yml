@@ -2,19 +2,37 @@
 # Template Manager 部署
 # 说明: 使用与 Orchestrator 相同的二进制文件，通过环境变量区分角色
 
-- name: 确保 Orchestrator 二进制已部署
-  stat:
-    path: /usr/local/bin/orchestrator
-  register: orchestrator_binary
+- name: 准备 Template Manager 运行时资产
+  include_role:
+    name: orchestrator
+    apply:
+      tags:
+        - template-manager
+  tags:
+    - template-manager
 
-- name: 复制 Orchestrator 二进制文件 (如未部署)
+- name: 安装本地制品仓库所需的 Docker
+  apt:
+    name: docker.io
+    state: present
+    update_cache: yes
+  when: artifacts_registry_provider == 'Local'
+
+- name: 启动本地 Docker daemon
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+  when: artifacts_registry_provider == 'Local'
+
+- name: 复制 Orchestrator 二进制文件
   copy:
     src: "{{ playbook_dir }}/../../infra/packages/orchestrator/bin/orchestrator"
     dest: /usr/local/bin/orchestrator
     owner: e2b
     group: e2b
     mode: '0755'
-  when: not orchestrator_binary.stat.exists
+  notify: restart template-manager
 
 - name: 创建 Template Manager Nomad 任务文件
   template:
@@ -22,12 +40,17 @@
     dest: /tmp/e2b-template-manager.nomad
     mode: '0640'
   delegate_to: "{{ groups['nomad_server'][0] }}"
-  run_once: true
+  when: inventory_hostname == groups['template_manager'][0]
+  no_log: true
 
 - name: 提交 Template Manager Nomad 任务
-  command: >-
-    nomad job run
-    {{ ('-token=' ~ (hostvars[groups['nomad_server'][0]]['nomad_acl_token'] | default(nomad_token | default('')))) if (nomad_acl_enabled | bool) else '' }}
-    /tmp/e2b-template-manager.nomad
+  command: nomad job run /tmp/e2b-template-manager.nomad
+  environment:
+    NOMAD_TOKEN: >-
+      {{
+        hostvars[groups['nomad_server'][0]]['nomad_acl_token']
+        | default(nomad_effective_token | default(nomad_token | default('')))
+      }}
+  no_log: "{{ nomad_acl_enabled | bool }}"
   delegate_to: "{{ groups['nomad_server'][0] }}"
-  run_once: true
+  when: inventory_hostname == groups['template_manager'][0]

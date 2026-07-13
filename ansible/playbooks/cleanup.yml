@@ -23,6 +23,30 @@
       ignore_errors: yes
       when: "'client_proxy' in group_names"
 
+    - name: 停止 Dashboard API 服务
+      systemd:
+        name: e2b-dashboard-api
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'dashboard_api' in group_names"
+
+    - name: 停止 Dashboard 服务
+      systemd:
+        name: e2b-dashboard
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'dashboard' in group_names"
+
+    - name: 停止 Nginx
+      systemd:
+        name: nginx
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+      when: "'lb' in group_names"
+
     - name: 停止 Nomad
       systemd:
         name: nomad

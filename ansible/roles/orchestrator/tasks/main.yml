@@ -8,6 +8,8 @@
     owner: e2b
     group: e2b
     mode: '0755'
+  when: "'orchestrator' in group_names"
+  notify: restart orchestrator
 
 - name: 复制 envd 二进制文件
   copy:
@@ -17,21 +19,55 @@
     group: e2b
     mode: '0755'
 
-- name: 加载内核模块
-  modprobe:
-    name: "{{ item }}"
-    state: present
-  loop:
-    - nbd
-    - tun
+- name: 检查 KVM 设备
+  stat:
+    path: /dev/kvm
+  register: kvm_device
+
+- name: 校验硬件虚拟化可用
+  assert:
+    that:
+      - kvm_device.stat.exists
+      - kvm_device.stat.ischr | default(false)
+    fail_msg: >-
+      /dev/kvm 不可用。Orchestrator 和 Template Manager 必须运行在支持 KVM
+      或嵌套虚拟化的 Linux 主机上。
+
+- name: 配置 NBD 模块参数
+  copy:
+    content: "options nbd nbds_max={{ nbd_max_devices }}\n"
+    dest: /etc/modprobe.d/e2b-nbd.conf
+    mode: '0644'
 
 - name: 配置内核模块开机加载
   copy:
-    content: |
-      nbd nbds_max=256
-      tun
+    content: "nbd\ntun\n"
     dest: /etc/modules-load.d/e2b.conf
     mode: '0644'
+
+- name: 加载 NBD 内核模块
+  modprobe:
+    name: nbd
+    state: present
+
+- name: 加载 TUN 内核模块
+  modprobe:
+    name: tun
+    state: present
+
+- name: 读取当前 NBD 设备上限
+  command: cat /sys/module/nbd/parameters/nbds_max
+  register: current_nbd_max_devices
+  changed_when: false
+
+- name: 校验当前 NBD 设备上限
+  assert:
+    that:
+      - (current_nbd_max_devices.stdout | int) >= (nbd_max_devices | int)
+    fail_msg: >-
+      当前 nbd 模块的 nbds_max={{ current_nbd_max_devices.stdout | trim }}，低于要求的
+      {{ nbd_max_devices }}。配置文件已经写入，请先停止现有 sandbox 并重新加载 nbd 模块，
+      或重启该节点后重新运行 playbook。
 
 - name: 设置内核参数
   sysctl:
@@ -56,29 +92,148 @@
     - "{{ e2b_kernels_dir }}"
     - "{{ e2b_firecracker_dir }}"
     - "{{ e2b_envd_path | dirname }}"
+    - "{{ e2b_busybox_dir }}"
 
-- name: 下载 Firecracker 内核
-  shell: |
-    set -e
-    mkdir -p {{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}
-    wget -q https://storage.googleapis.com/e2b-prod-public-builds/kernels/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin \
-      -O {{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin \
-      || wget -q https://storage.googleapis.com/e2b-prod-public-builds/kernels/{{ default_kernel_version }}/vmlinux.bin \
-        -O {{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin
-  args:
-    creates: "{{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin"
+- name: 检查 Firecracker 内核
+  stat:
+    path: "{{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin"
+  register: firecracker_kernel
 
-- name: 下载 Firecracker
-  shell: |
-    set -e
-    mkdir -p {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}
-    wget -q https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker \
-      -O {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker \
-      || wget -q https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/{{ default_firecracker_version }}/firecracker \
-        -O {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker
-    chmod +x {{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker
-  args:
-    creates: "{{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker"
+- name: 安装 Firecracker 内核
+  when: not firecracker_kernel.stat.exists or (firecracker_kernel.stat.size | default(0) | int) == 0
+  block:
+    - name: 创建 Firecracker 内核版本目录
+      file:
+        path: "{{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}"
+        state: directory
+        owner: e2b
+        group: e2b
+        mode: '0755'
+
+    - name: 下载架构对应的 Firecracker 内核
+      block:
+        - name: 下载带架构目录的 Firecracker 内核
+          get_url:
+            url: "https://storage.googleapis.com/e2b-prod-public-builds/kernels/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin"
+            dest: "/tmp/e2b-{{ default_kernel_version }}-{{ ansible_architecture_normalized }}.part"
+            mode: '0644'
+            force: true
+      rescue:
+        - name: 下载旧布局的 Firecracker 内核
+          get_url:
+            url: "https://storage.googleapis.com/e2b-prod-public-builds/kernels/{{ default_kernel_version }}/vmlinux.bin"
+            dest: "/tmp/e2b-{{ default_kernel_version }}-{{ ansible_architecture_normalized }}.part"
+            mode: '0644'
+            force: true
+
+    - name: 校验 Firecracker 内核非空
+      command: "test -s /tmp/e2b-{{ default_kernel_version }}-{{ ansible_architecture_normalized }}.part"
+      changed_when: false
+
+    - name: 原子安装 Firecracker 内核
+      copy:
+        src: "/tmp/e2b-{{ default_kernel_version }}-{{ ansible_architecture_normalized }}.part"
+        dest: "{{ e2b_kernels_dir }}/{{ default_kernel_version }}/{{ ansible_architecture_normalized }}/vmlinux.bin"
+        remote_src: true
+        owner: e2b
+        group: e2b
+        mode: '0644'
+
+    - name: 删除 Firecracker 内核临时文件
+      file:
+        path: "/tmp/e2b-{{ default_kernel_version }}-{{ ansible_architecture_normalized }}.part"
+        state: absent
+
+- name: 检查 Firecracker 二进制
+  stat:
+    path: "{{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker"
+  register: firecracker_binary
+
+- name: 安装 Firecracker
+  when: not firecracker_binary.stat.exists or (firecracker_binary.stat.size | default(0) | int) == 0
+  block:
+    - name: 创建 Firecracker 版本目录
+      file:
+        path: "{{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}"
+        state: directory
+        owner: e2b
+        group: e2b
+        mode: '0755'
+
+    - name: 下载架构对应的 Firecracker
+      block:
+        - name: 下载带架构目录的 Firecracker
+          get_url:
+            url: "https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker"
+            dest: "/tmp/e2b-{{ default_firecracker_version }}-{{ ansible_architecture_normalized }}.part"
+            mode: '0755'
+            force: true
+      rescue:
+        - name: 下载旧布局的 Firecracker
+          get_url:
+            url: "https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/{{ default_firecracker_version }}/firecracker"
+            dest: "/tmp/e2b-{{ default_firecracker_version }}-{{ ansible_architecture_normalized }}.part"
+            mode: '0755'
+            force: true
+
+    - name: 校验 Firecracker 二进制非空
+      command: "test -s /tmp/e2b-{{ default_firecracker_version }}-{{ ansible_architecture_normalized }}.part"
+      changed_when: false
+
+    - name: 原子安装 Firecracker
+      copy:
+        src: "/tmp/e2b-{{ default_firecracker_version }}-{{ ansible_architecture_normalized }}.part"
+        dest: "{{ e2b_firecracker_dir }}/{{ default_firecracker_version }}/{{ ansible_architecture_normalized }}/firecracker"
+        remote_src: true
+        owner: e2b
+        group: e2b
+        mode: '0755'
+
+    - name: 删除 Firecracker 临时文件
+      file:
+        path: "/tmp/e2b-{{ default_firecracker_version }}-{{ ansible_architecture_normalized }}.part"
+        state: absent
+
+- name: 检查 BusyBox 二进制
+  stat:
+    path: "{{ e2b_busybox_dir }}/{{ busybox_version }}/{{ ansible_architecture_normalized }}/busybox"
+  register: busybox_binary
+
+- name: 安装 BusyBox
+  when: not busybox_binary.stat.exists or (busybox_binary.stat.size | default(0) | int) == 0
+  block:
+    - name: 创建 BusyBox 版本目录
+      file:
+        path: "{{ e2b_busybox_dir }}/{{ busybox_version }}/{{ ansible_architecture_normalized }}"
+        state: directory
+        owner: e2b
+        group: e2b
+        mode: '0755'
+
+    - name: 下载 BusyBox
+      get_url:
+        url: "https://storage.googleapis.com/e2b-prod-public-builds/busybox/{{ busybox_version }}/{{ ansible_architecture_normalized }}/busybox"
+        dest: "/tmp/e2b-busybox-{{ busybox_version }}-{{ ansible_architecture_normalized }}.part"
+        mode: '0755'
+        force: true
+
+    - name: 校验 BusyBox 二进制非空
+      command: "test -s /tmp/e2b-busybox-{{ busybox_version }}-{{ ansible_architecture_normalized }}.part"
+      changed_when: false
+
+    - name: 原子安装 BusyBox
+      copy:
+        src: "/tmp/e2b-busybox-{{ busybox_version }}-{{ ansible_architecture_normalized }}.part"
+        dest: "{{ e2b_busybox_dir }}/{{ busybox_version }}/{{ ansible_architecture_normalized }}/busybox"
+        remote_src: true
+        owner: e2b
+        group: e2b
+        mode: '0755'
+
+    - name: 删除 BusyBox 临时文件
+      file:
+        path: "/tmp/e2b-busybox-{{ busybox_version }}-{{ ansible_architecture_normalized }}.part"
+        state: absent
 
 - name: 配置 Orchestrator 环境变量
   template:
@@ -87,7 +242,9 @@
     owner: e2b
     group: e2b
     mode: '0640'
+  when: "'orchestrator' in group_names"
   notify: restart orchestrator
+  no_log: true
 
 - name: 创建 Orchestrator Nomad 任务文件
   template:
@@ -95,12 +252,17 @@
     dest: /tmp/e2b-orchestrator.nomad
     mode: '0640'
   delegate_to: "{{ groups['nomad_server'][0] }}"
-  run_once: true
+  when: inventory_hostname == groups['orchestrator'][0]
+  no_log: true
 
 - name: 提交 Orchestrator Nomad 任务
-  command: >-
-    nomad job run
-    {{ ('-token=' ~ (hostvars[groups['nomad_server'][0]]['nomad_acl_token'] | default(nomad_token | default('')))) if (nomad_acl_enabled | bool) else '' }}
-    /tmp/e2b-orchestrator.nomad
+  command: nomad job run /tmp/e2b-orchestrator.nomad
+  environment:
+    NOMAD_TOKEN: >-
+      {{
+        hostvars[groups['nomad_server'][0]]['nomad_acl_token']
+        | default(nomad_effective_token | default(nomad_token | default('')))
+      }}
+  no_log: "{{ nomad_acl_enabled | bool }}"
   delegate_to: "{{ groups['nomad_server'][0] }}"
-  run_once: true
+  when: inventory_hostname == groups['orchestrator'][0]

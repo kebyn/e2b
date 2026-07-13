@@ -6,9 +6,57 @@
   become: true
   gather_facts: false
 
+  pre_tasks:
+    - name: 检查持久化的 Nomad ACL Token
+      stat:
+        path: "{{ nomad_acl_token_file }}"
+      delegate_to: "{{ groups['nomad_server'][0] }}"
+      register: nomad_acl_token_file_state
+      run_once: true
+      when: nomad_acl_enabled | bool
+
+    - name: 读取持久化的 Nomad ACL Token
+      slurp:
+        src: "{{ nomad_acl_token_file }}"
+      delegate_to: "{{ groups['nomad_server'][0] }}"
+      register: nomad_persisted_token
+      run_once: true
+      when:
+        - nomad_acl_enabled | bool
+        - (nomad_token | default('') | length) == 0
+        - nomad_acl_token_file_state.stat.exists | default(false)
+      no_log: true
+
+    - name: 解析验证使用的 Nomad ACL Token
+      set_fact:
+        nomad_effective_token: >-
+          {{
+            nomad_token
+            if (nomad_token | default('') | length) > 0
+            else (
+              (nomad_persisted_token.content | b64decode | trim)
+              if (
+                nomad_persisted_token is defined
+                and nomad_persisted_token.content is defined
+              )
+              else ''
+            )
+          }}
+      no_log: true
+
   tasks:
     - name: 检查 PostgreSQL 连接
-      shell: psql -h localhost -U {{ postgres_user }} -d {{ postgres_database }} -c "SELECT 1;"
+      command:
+        argv:
+          - psql
+          - -h
+          - localhost
+          - -U
+          - "{{ postgres_user }}"
+          - -d
+          - "{{ postgres_database }}"
+          - -c
+          - SELECT 1;
       environment:
         PGPASSWORD: "{{ postgres_password }}"
       when: "'postgresql' in group_names"
@@ -16,16 +64,26 @@
       changed_when: false
 
     - name: 检查 Redis 连接
-      shell: redis-cli -h localhost -p {{ redis_port }} ping
+      command:
+        argv:
+          - redis-cli
+          - -h
+          - localhost
+          - -p
+          - "{{ redis_port | string }}"
+          - ping
       when: "'redis' in group_names"
       register: redis_check
       changed_when: false
 
     - name: 检查 Nomad 状态
-      shell: nomad server members -json
+      command: nomad server members -json
+      environment:
+        NOMAD_TOKEN: "{{ nomad_effective_token | default('') }}"
       when: "'nomad_server' in group_names"
       register: nomad_check
       changed_when: false
+      no_log: "{{ nomad_acl_enabled | bool }}"
 
     - name: 检查 API 健康状态
       uri:
@@ -44,18 +102,33 @@
       register: proxy_check
 
     - name: 检查 Orchestrator Nomad 任务
-      shell: nomad status e2b-orchestrator -json
+      command: nomad status e2b-orchestrator -json
+      environment:
+        NOMAD_TOKEN: "{{ nomad_effective_token | default('') }}"
       delegate_to: "{{ groups['nomad_server'][0] }}"
       run_once: true
       register: orchestrator_check
       changed_when: false
+      no_log: "{{ nomad_acl_enabled | bool }}"
+
+    - name: 检查 Template Manager Nomad 任务
+      command: nomad status e2b-template-manager -json
+      environment:
+        NOMAD_TOKEN: "{{ nomad_effective_token | default('') }}"
+      delegate_to: "{{ groups['nomad_server'][0] }}"
+      run_once: true
+      register: template_manager_check
+      changed_when: false
+      no_log: "{{ nomad_acl_enabled | bool }}"
+      when: template_manager_enabled | default(false) | bool
 
     - name: 显示检查结果
       debug:
         msg: |
-          PostgreSQL: {{ 'OK' if pg_check is defined and pg_check.rc == 0 else 'FAIL' if pg_check is defined else 'SKIP' }}
-          Redis: {{ 'OK' if redis_check is defined and redis_check.stdout == 'PONG' else 'FAIL' if redis_check is defined else 'SKIP' }}
-          Nomad: {{ 'OK' if nomad_check is defined and nomad_check.rc == 0 else 'FAIL' if nomad_check is defined else 'SKIP' }}
-          API: {{ 'OK' if api_check is defined else 'SKIP' }}
-          Client Proxy: {{ 'OK' if proxy_check is defined else 'SKIP' }}
-          Orchestrator: {{ 'OK' if orchestrator_check is defined else 'SKIP' }}
+          PostgreSQL: {{ 'SKIP' if 'postgresql' not in group_names else ('OK' if (pg_check.rc | default(1)) == 0 else 'FAIL') }}
+          Redis: {{ 'SKIP' if 'redis' not in group_names else ('OK' if (redis_check.stdout | default('')) == 'PONG' else 'FAIL') }}
+          Nomad: {{ 'SKIP' if 'nomad_server' not in group_names else ('OK' if (nomad_check.rc | default(1)) == 0 else 'FAIL') }}
+          API: {{ 'SKIP' if 'api' not in group_names else ('OK' if (api_check.status | default(0)) == 200 else 'FAIL') }}
+          Client Proxy: {{ 'SKIP' if 'client_proxy' not in group_names else ('OK' if (proxy_check.status | default(0)) == 200 else 'FAIL') }}
+          Orchestrator: {{ 'OK' if (orchestrator_check.rc | default(1)) == 0 else 'FAIL' }}
+          Template Manager: {{ 'SKIP' if not (template_manager_enabled | default(false) | bool) else ('OK' if (template_manager_check.rc | default(1)) == 0 else 'FAIL') }}

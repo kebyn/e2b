@@ -25,6 +25,7 @@
     group: e2b
     mode: '0640'
   notify: restart client-proxy
+  no_log: true
 
 - name: 创建 Client Proxy Systemd 服务
   template:

@@ -5,22 +5,137 @@
   gather_facts: true
 
   pre_tasks:
+    - name: 检查持久化的 Nomad ACL Token
+      stat:
+        path: "{{ nomad_acl_token_file }}"
+      delegate_to: "{{ groups['nomad_server'][0] }}"
+      register: nomad_acl_token_file_state
+      run_once: true
+      when: nomad_acl_enabled | bool
+      tags: [always]
+
+    - name: 读取持久化的 Nomad ACL Token
+      slurp:
+        src: "{{ nomad_acl_token_file }}"
+      delegate_to: "{{ groups['nomad_server'][0] }}"
+      register: nomad_persisted_token
+      run_once: true
+      when:
+        - nomad_acl_enabled | bool
+        - (nomad_token | default('') | length) == 0
+        - nomad_acl_token_file_state.stat.exists | default(false)
+      no_log: true
+      tags: [always]
+
+    - name: 解析本次部署使用的 Nomad ACL Token
+      set_fact:
+        nomad_effective_token: >-
+          {{
+            nomad_token
+            if (nomad_token | default('') | length) > 0
+            else (
+              (nomad_persisted_token.content | b64decode | trim)
+              if (
+                nomad_persisted_token is defined
+                and nomad_persisted_token.content is defined
+              )
+              else ''
+            )
+          }}
+      no_log: true
+      tags: [always]
+
     - name: 校验关键部署配置
       assert:
         that:
-          - (redis_cluster_url | default('') | length) > 0 or (redis_effective_url | default('') | length) > 0
+          - >-
+            (redis_cluster_url | default('') | length) > 0
+            or (redis_url | default('') | length) > 0
+            or (redis_host | default('') | length) > 0
+          - (postgres_password | default('') | length) > 0
           - postgres_password != "CHANGE_ME_POSTGRES_PASSWORD"
-          - redis_requirepass != "CHANGE_ME_REDIS_PASSWORD"
+          - (redis_requirepass | default('') | length) == 0
+          - (admin_token | default('') | length) >= 16
           - admin_token != "CHANGE_ME_ADMIN_TOKEN"
+          - (sandbox_access_token_hash_seed | default('') | length) >= 32
+          - sandbox_access_token_hash_seed != "CHANGE_ME_SANDBOX_ACCESS_TOKEN_HASH_SEED"
+          - (volume_token_signing_key | default('') | length) > 0
           - volume_token_signing_key != "ECDSA:CHANGE_ME_BASE64_PRIVATE_KEY"
-          - not (nomad_acl_enabled | bool) or (nomad_token | default('') | length) > 0 or (nomad_acl_bootstrap_enabled | bool)
+          - >-
+            (
+              groups['postgresql'] | default([])
+              | map('extract', hostvars)
+              | selectattr('pg_role', 'equalto', 'primary')
+              | list
+              | length
+            ) == 1
+          - >-
+            (
+              groups['redis'] | default([])
+              | map('extract', hostvars)
+              | selectattr('redis_role', 'equalto', 'master')
+              | list
+              | length
+            ) == 1
+          - (groups['nomad_server'] | default([]) | length) > 0
+          - (groups['nomad_server'] | length) % 2 == 1
+          - (groups['orchestrator'] | default([]) | length) > 0
+          - ansible_architecture_normalized in ['amd64', 'arm64']
+          - public_url_scheme in ['http', 'https']
+          - storage_provider in ['Local', 'GCPBucket', 'AWSBucket']
+          - artifacts_registry_provider in ['Local', 'GCP_ARTIFACTS', 'AWS_ECR']
+          - not (nomad_acl_enabled | bool) or (nomad_effective_token | length) > 0 or (nomad_acl_bootstrap_enabled | bool)
+          - >-
+            not (template_manager_enabled | default(false) | bool)
+            or (
+              (groups['template_manager'] | default([]) | length) > 0
+              and (groups['template_manager'] | length) >= (template_manager_count | default(2) | int)
+            )
+          - >-
+            artifacts_registry_provider != 'Local'
+            or (template_manager_count | default(1) | int) <= 1
+            or (local_artifacts_replicated | bool)
+          - >-
+            not (dashboard_enabled | default(false) | bool)
+            or (
+              dashboard_install_method == 'source'
+              and (dashboard_session_secret | default('') | length) >= 32
+              and dashboard_session_secret != 'CHANGE_ME_DASHBOARD_SESSION_SECRET'
+              and (ory_sdk_url | default('') | length) > 0
+              and (ory_project_api_token | default('') | length) > 0
+              and (ory_issuer_url | default('') | length) > 0
+              and (dashboard_ory_oauth2_client_id | default('') | length) > 0
+              and (dashboard_ory_oauth2_client_secret | default('') | length) > 0
+              and (dashboard_ory_oauth2_cli_client_id | default('') | length) > 0
+              and (dashboard_ory_oauth2_audience | default('') | length) > 0
+            )
+          - >-
+            storage_provider != 'Local'
+            or (local_storage_shared | bool)
+            or (
+              (groups['orchestrator'] | default([]) | length)
+              + (
+                (groups['template_manager'] | default([]) | length)
+                if (template_manager_enabled | default(false) | bool)
+                else 0
+              )
+            ) <= 1
         fail_msg: |
           请先在 inventories/production/group_vars/all.yml 中配置生产值:
           - redis_url 或 redis_cluster_url
-          - postgres_password、redis_requirepass、admin_token
+          - 非空 postgres_password、至少 16 字符的 admin_token
+          - 至少 32 字符的 sandbox_access_token_hash_seed
           - volume_token_signing_key
+          - inventory 中必须恰好有一个 PostgreSQL primary 和一个 Redis master
+          - Nomad Server 数量必须为非零奇数，且至少配置一个 Orchestrator
           - 如 Nomad ACL 已初始化，请填写 nomad_token
+          - 启用 Template Manager 时，build 节点数不能少于 template_manager_count
+          - Local 制品模式启用多个 Template Manager 时，必须同步各节点镜像并设置 local_artifacts_replicated=true
+          - 启用 Dashboard 时必须配置 session secret、Ory SDK/PAT 和 OAuth client 参数
+          - 当前上游客户端不支持 Redis 密码，redis_requirepass 必须为空并使用私网隔离
+          - 多运行/构建节点使用 Local 存储时，必须先挂载共享目录并设置 local_storage_shared=true
       run_once: true
+      tags: [always]
 
     - name: 安装基础依赖
       apt:
@@ -33,6 +148,7 @@
           - jq
         state: present
         update_cache: yes
+      tags: [always]
 
     - name: 创建 E2B 用户
       user:
@@ -40,6 +156,7 @@
         system: yes
         shell: /bin/bash
         create_home: no
+      tags: [always]
 
     - name: 创建 E2B 目录
       file:
@@ -55,6 +172,9 @@
         - "{{ e2b_kernels_dir }}"
         - "{{ e2b_firecracker_dir }}"
         - "{{ e2b_envd_path | dirname }}"
+        - "{{ local_template_storage_base_path }}"
+        - "{{ local_build_cache_storage_base_path }}"
+      tags: [always]
 
   roles:
     - role: postgresql
@@ -78,11 +198,11 @@
       tags: [client-proxy]
 
     - role: orchestrator
-      when: "'nomad_client' in group_names"
+      when: "'orchestrator' in group_names"
       tags: [orchestrator]
 
     - role: template-manager
-      when: "'nomad_client' in group_names and template_manager_enabled | default(false)"
+      when: "'template_manager' in group_names and template_manager_enabled | default(false)"
       tags: [template-manager]
 
     - role: dashboard-api
