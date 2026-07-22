@@ -49,7 +49,7 @@ rg -U -o 'New(Bool|Int|String|JSON)Flag\(\s*"' \
 | `write-to-cache-on-writes` | false | 写入时同时写缓存 |
 | `use-nfs-for-building-templates` | dev: true | 构建模板时使用 NFS cache |
 | `create-storage-cache-spans` | dev: true | 创建存储缓存 trace span |
-| `orch-accepts-combined-host` | false | Orchestrator 是否接受 combined host |
+| `orch-accepts-combined-host` | false | 是否让 Orchestrator 直接接受 `sandbox.<DOMAIN_NAME>` + `E2b-Sandbox-Id`/`E2b-Sandbox-Port` 组合；关闭时 Client Proxy 会把共享 Host 改写为 `{port}-{sandboxID}.<DOMAIN_NAME>` 以兼容下游。它不是 Header 寻址总开关 |
 | `storage-soft-delete-check` | false | 读取 storage-index soft-delete tombstone |
 | `storage-soft-delete-enforce` | false | soft-deleted 对象读取失败关闭 |
 | `use-memfd` | true | Firecracker guest memory 使用 memfd |

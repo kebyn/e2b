@@ -820,6 +820,7 @@ spec:
   - hosts:
     - api.e2b.your-domain.com
     - "*.e2b.your-domain.com"
+    - sandbox.e2b.your-domain.com
     secretName: e2b-tls
   rules:
   - host: api.e2b.your-domain.com
@@ -842,9 +843,20 @@ spec:
             name: e2b-client-proxy
             port:
               number: 3002
+  # Ingress 通配符不匹配 sandbox.e2b.your-domain.com 本身。
+  - host: sandbox.e2b.your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: e2b-client-proxy
+            port:
+              number: 3002
 ```
 
-客户端将 `E2B_DOMAIN` 设为 `e2b.your-domain.com`。SDK 会访问 `api.e2b.your-domain.com`，并把 Sandbox 流量发往 `{port}-{sandboxID}.e2b.your-domain.com`；因此 TLS 证书和 Ingress 必须覆盖 `*.e2b.your-domain.com`。
+客户端将 `E2B_DOMAIN` 设为 `e2b.your-domain.com`。普通 Sandbox 流量发往 `{port}-{sandboxID}.e2b.your-domain.com`；需要稳定共享入口时发往 `sandbox.e2b.your-domain.com`，并携带 `E2b-Sandbox-Id` 与 `E2b-Sandbox-Port`。TLS 通配符证书可覆盖这两个入口，但 Ingress 必须像上面一样显式声明共享 Host；Header 也必须原样转发到 Client Proxy。
 
 ### 4.10 ServiceAccount & RBAC
 
