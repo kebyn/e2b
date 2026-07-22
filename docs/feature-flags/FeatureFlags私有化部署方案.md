@@ -4,7 +4,7 @@
 >
 > 本文档不维护服务启动参数全集或整体组件取舍；这些内容分别由参数文档和组件分析文档维护。
 >
-> 基线：上游 `e2b-dev/infra` tag `2026.28`，以 `infra/packages/shared/pkg/featureflags/flags.go` 为准。
+> 基线：上游 `e2b-dev/infra` tag `2026.28`，commit `fda7bef1095afb909197e272c0a8a123797f0bfb`，以 `infra/packages/shared/pkg/featureflags/flags.go` 为准。
 >
 > 相关文档：
 > - [`README.md`](../../README.md)：仓库总入口与文档导航
@@ -22,6 +22,13 @@
 ### 如果你想知道“代码里到底有哪些 Flag”
 
 看 [2. Feature Flags 完整列表](#2-feature-flags-完整列表)。该清单按 `flags.go` 的 `NewBoolFlag`、`NewIntFlag`、`NewStringFlag`、`NewJSONFlag` 生成。
+
+当前清单共 80 项，可在仓库根目录复核：
+
+```bash
+rg -U -o 'New(Bool|Int|String|JSON)Flag\(\s*"' \
+  infra/packages/shared/pkg/featureflags/flags.go | wc -l
+```
 
 ### 如果你想接入 YAML / Unleash / 自建配置
 
