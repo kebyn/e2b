@@ -77,6 +77,14 @@ rg -U -o 'New(Bool|Int|String|JSON)Flag\(\s*"' \
 | `pause-resume-prefetch-consume` | false | 将采样 mapping 写入 pause artifact |
 | `clickhouse-write-fanout` | false | 启用 ClickHouse 多写端点 fan-out |
 
+与用户请求路径直接相关的三个 Flag 需要区分：
+
+- `orch-accepts-combined-host` 只控制 Client Proxy 到 Orchestrator 的共享 Host 兼容改写；Header 寻址本身无需启用它。
+- `network-transform-rules` 控制 API 是否接受 Sandbox 网络域名 Header transform，生产 fallback 为 `false`。
+- `byop-proxy-enabled` 控制 API 是否接受 `network.egressProxy` SOCKS5 配置，生产 fallback 为 `false`。
+
+完整请求字段和限制见 [`2026.28用户可见功能.md`](../reference/2026.28用户可见功能.md#3-sandbox-网络-transform-与-socks5-出口)。`sandbox-auto-resume` 已从 `2026.28` 删除；流量触发恢复由 Sandbox 的 `autoResume` API 配置和 Client Proxy API gRPC 通道决定，不应创建同名自定义 Flag。
+
 ### 2.2 Integer Flags
 
 | Flag 名称 | 默认值 | 单位 | 说明 |

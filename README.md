@@ -63,6 +63,7 @@ make -C infra/packages/db migrate
 ### 参考与架构
 
 - 启动参数和环境变量：[`docs/reference/启动参数详解.md`](./docs/reference/启动参数详解.md#阅读导航)
+- `2026.28` 用户可见功能：[`docs/reference/2026.28用户可见功能.md`](./docs/reference/2026.28用户可见功能.md)
 - 核心组件职责：[`docs/architecture/核心组件详解.md`](./docs/architecture/核心组件详解.md#阅读导航)
 - 私有化组件取舍：[`docs/architecture/私有化部署组件分析.md`](./docs/architecture/私有化部署组件分析.md#阅读导航)
 - Feature Flags / LaunchDarkly 私有化：[`docs/feature-flags/FeatureFlags私有化部署方案.md`](./docs/feature-flags/FeatureFlags私有化部署方案.md#1-阅读导航)
