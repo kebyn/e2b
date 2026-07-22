@@ -2,6 +2,8 @@
 
 > 本文档是 **Kubernetes 私有化部署专线文档**：负责说明如何用 `2026.28` 已内置的 Kubernetes service discovery 部署 E2B，不维护通用裸机 / Docker / Nomad 部署步骤。
 >
+> 事实基线：上游 commit `fda7bef1095afb909197e272c0a8a123797f0bfb`。该版本内置 API 的 Kubernetes discovery，但不提供完整的 Orchestrator / Template Manager Kubernetes 运行清单。本文镜像名均为占位符；API 与 Client Proxy 可从固定子模块的 Dockerfile 构建，Orchestrator 还需要包含兼容 glibc 的自定义运行镜像和宿主机运行资产。
+>
 > 相关文档：
 > - [`README.md`](../../README.md)：仓库总入口与文档导航
 > - [`不修改代码完整部署指南.md`](./不修改代码完整部署指南.md)：零 Terraform / 零 IaC 的通用生产部署主文档
@@ -14,7 +16,7 @@
 ## 阅读导航
 
 ### 如果你要在 Kubernetes 上部署
-- 直接按本文档顺序执行
+- 先完成镜像、宿主机资产和占位 secret 准备，再按本文档顺序应用清单
 
 ### 如果你只是确认 K8s 是否还需要改代码
 - 看 [3. 2026.28 内置 K8s 支持](#3-202628-内置-k8s-支持)
@@ -95,16 +97,16 @@
 | Client Proxy | Deployment | 2+ | 无状态，水平扩展 |
 | Orchestrator | DaemonSet | = 节点数 | 每个节点一个，管理 sandbox |
 | Redis | StatefulSet / 外部托管服务 | 1 主 + 副本 + LB，或 Cluster | 应用只连接 `REDIS_URL` 单端点或 `REDIS_CLUSTER_URL` 集群端点，不直连 Sentinel |
-| PostgreSQL | StatefulSet | 3 | 主从复制 + 连接池 |
+| PostgreSQL | Operator / 外部托管服务 | 3+ | 必须由 Patroni、CloudNativePG 等实现主从和故障切换；普通 StatefulSet 不会自动复制 |
 | ClickHouse | StatefulSet | 1+ | 可选，用于指标存储 |
 
 > **K8s Node Pool 等价方案**
 > - Nomad `node_pool` 在 K8s 中对应 `nodeSelector` 或 `nodeAffinity`
 > - Orchestrator 使用 DaemonSet，天然每个节点运行一个（无需 nodeSelector）
 > - 如需添加 Template Manager：
->   - 使用 Deployment + `nodeSelector: pool: build`
->   - 或通过 `nodeAffinity` 限制到特定节点池
->   - 需修改 `GRPC_PORT` 为 `5009` 避免与 Orchestrator 端口冲突（DaemonSet 已占用 5008）
+>   - 使用 `hostNetwork: true` 的 Deployment，并通过 `nodeSelector` / `nodeAffinity` 放到独立 build 节点
+>   - 当前 Kubernetes discovery 使用 HostIP 和固定 `5008`，因此不能仅把 Template Manager 改到 `5009`
+>   - 必须避免它与同节点 Orchestrator 争用 `5008`，最直接的方式是使用互斥节点池
 
 ---
 
@@ -112,7 +114,7 @@
 
 ### 2.1 K8s 集群要求
 
-```yaml
+```text
 # 最小配置
 节点数: 3 (高可用)
 每节点:
@@ -159,6 +161,21 @@ Orchestrator 需要以下特权（用于管理 sandbox）：
 - 模板存储: 500GB+ (NFS 或对象存储)
 ```
 
+### 2.4 Orchestrator 镜像与宿主机资产
+
+`infra/packages/orchestrator/Dockerfile` 的最终 `scratch` stage 只承载构建产物；Orchestrator 二进制启用 CGO、动态链接 glibc，该 stage 也不包含 Firecracker、kernel、envd 或 BusyBox，因此不能直接当作本文 DaemonSet 的完整运行镜像。应基于与构建时兼容的 Debian/Ubuntu 运行层封装二进制，或通过其他受控方式把二进制放到节点。
+
+每个带 `e2b-orchestrator=true` label 的节点还必须在 DaemonSet 启动前准备以下内容：
+
+| DaemonSet 路径 | 内容 | 固定子模块来源 |
+|----------------|------|----------------|
+| `/var/lib/e2b/fc-kernels` | 内核镜像 | `make -C infra download-public-kernels` |
+| `/var/lib/e2b/fc-versions` | Firecracker builds | `make -C infra download-public-firecrackers` |
+| `/var/lib/e2b/fc-envd/envd` | envd Linux 二进制 | `make -C infra/packages/envd build` |
+| `/var/lib/e2b/fc-busybox/1.36.1/<arch>/busybox` | BusyBox | `make -C infra/packages/orchestrator fetch-busybox` |
+
+这些命令在构建机生成或下载资产；仍需用镜像烘焙、节点初始化或受控分发流程把它们放到各目标节点。仅创建空的 `/var/lib/e2b` hostPath 不足以运行 sandbox。
+
 ---
 
 ## 3. 2026.28 内置 K8s 支持
@@ -191,7 +208,7 @@ K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR=app.kubernetes.io/name=template-manager
 
 ### 3.2 K8s RBAC 要求
 
-API Pod 需要能 list/watch Pod，至少应授予当前 namespace 内 `pods` 的 `get`、`list`、`watch` 权限。服务发现会过滤未 ready、无 IP 的 Pod，并使用 Orchestrator Pod 的 host IP / Template Manager Pod 的 pod IP 建立连接。
+API Pod 需要能 list/watch Pod，至少应授予当前 namespace 内 `pods` 的 `get`、`list`、`watch` 权限。服务发现会过滤未 ready、无 IP 的 Pod，并对 Orchestrator 与 Template Manager 都优先使用 Pod 的 HostIP 和固定 `5008` 建立连接；两类 workload 都必须使用 `hostNetwork: true`。
 
 ### 3.3 不再需要的旧改造
 
@@ -233,20 +250,15 @@ data:
   K8S_ORCHESTRATOR_POD_LABEL_SELECTOR: "app.kubernetes.io/name=orchestrator"
   K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR: "app.kubernetes.io/name=template-manager"
   USE_LOCAL_NAMESPACE_STORAGE: "true"
-
-  # 默认端口
-  GRPC_PORT: "5008"
-  PROXY_PORT: "3002"
-  HEALTH_PORT: "3003"
-
-  # Nomad 配置（可选，保留向后兼容）
-  NOMAD_ADDRESS: ""
+  STORAGE_PROVIDER: "GCPBucket"
 
   # ClickHouse（可选）
   CLICKHOUSE_CONNECTION_STRING: ""
 ```
 
 ### 4.3 Secrets
+
+下面的值都是占位符，应在应用清单前替换。其中 `VOLUME_TOKEN_SIGNING_KEY` 必须是与算法匹配的 `TYPE:base64(PEM)`；GCS 部署中 `GOOGLE_SERVICE_ACCOUNT_BASE64` 不能保持为空，因为生成上传签名 URL 时会直接解析该服务账号。不使用卷功能时，也可在 ConfigMap 设置 `VOLUME_TOKEN_ENABLED: "false"` 并从 API Deployment 删除四个签名变量引用。
 
 ```yaml
 # secrets.yaml
@@ -262,7 +274,7 @@ stringData:
 
   # Redis：应用连接稳定主端点；Cluster 模式改用 REDIS_CLUSTER_URL
   REDIS_URL: "redis-primary:6379"
-  # REDIS_CLUSTER_URL: "redis-node-1:6379,redis-node-2:6379,redis-node-3:6379"
+  # REDIS_CLUSTER_URL: "redis-cluster-bootstrap:6379"
 
   # 认证 provider（可选）
   AUTH_PROVIDER_CONFIG: '{"jwt":[]}'
@@ -344,6 +356,16 @@ spec:
             secretKeyRef:
               name: e2b-secrets
               key: ADMIN_TOKEN
+        - name: AUTH_PROVIDER_CONFIG
+          valueFrom:
+            secretKeyRef:
+              name: e2b-secrets
+              key: AUTH_PROVIDER_CONFIG
+        - name: LOKI_URL
+          valueFrom:
+            secretKeyRef:
+              name: e2b-secrets
+              key: LOKI_URL
         - name: VOLUME_TOKEN_ISSUER
           valueFrom:
             secretKeyRef:
@@ -446,8 +468,6 @@ spec:
               key: REDIS_URL
         - name: API_INTERNAL_GRPC_ADDRESS
           value: "e2b-api:5009"
-        - name: API_EDGE_GRPC_ADDRESS
-          value: "e2b-api:5109"
         resources:
           requests:
             cpu: "250m"
@@ -457,13 +477,13 @@ spec:
             memory: "1Gi"
         livenessProbe:
           httpGet:
-            path: /
+            path: /health
             port: health
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /
+            path: /health
             port: health
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -493,15 +513,15 @@ metadata:
   name: e2b-orchestrator
   namespace: e2b
   labels:
-    app: e2b-orchestrator
+    app.kubernetes.io/name: orchestrator
 spec:
   selector:
     matchLabels:
-      app: e2b-orchestrator
+      app.kubernetes.io/name: orchestrator
   template:
     metadata:
       labels:
-        app: e2b-orchestrator
+        app.kubernetes.io/name: orchestrator
     spec:
       hostNetwork: true
       hostPID: true
@@ -524,6 +544,10 @@ spec:
           sysctl -w vm.nr_hugepages=2048
         securityContext:
           privileged: true
+        volumeMounts:
+        - name: modules
+          mountPath: /lib/modules
+          readOnly: true
       containers:
       - name: orchestrator
         image: e2b/orchestrator:latest
@@ -556,6 +580,11 @@ spec:
             secretKeyRef:
               name: e2b-secrets
               key: BUILD_CACHE_BUCKET_NAME
+        - name: GOOGLE_SERVICE_ACCOUNT_BASE64
+          valueFrom:
+            secretKeyRef:
+              name: e2b-secrets
+              key: GOOGLE_SERVICE_ACCOUNT_BASE64
         - name: REDIS_URL
           valueFrom:
             secretKeyRef:
@@ -571,6 +600,8 @@ spec:
           value: "/var/lib/e2b/fc-versions"
         - name: HOST_ENVD_PATH
           value: "/var/lib/e2b/fc-envd/envd"
+        - name: HOST_BUSYBOX_DIR
+          value: "/var/lib/e2b/fc-busybox"
         securityContext:
           privileged: true
         volumeMounts:
@@ -608,10 +639,12 @@ spec:
 
 ### 4.7 Redis 接入（单端点或 Cluster）
 
+> 上面的 DaemonSet 只部署 Orchestrator runtime。需要在线构建模板时，还必须部署带 `app.kubernetes.io/name=template-manager` label 的 Template Manager；它应使用 `hostNetwork: true`、监听 `5008`，并调度到不运行 Orchestrator 的独立 build 节点。
+
 `2026.28` 的应用侧 Redis 客户端只支持两类连接：
 
 - `REDIS_URL=host:port`：单 Redis 端点。生产环境可在 Redis 主从前放 HAProxy/VIP/云 LB，让应用始终连接当前主节点。
-- `REDIS_CLUSTER_URL=host1:port,host2:port`：Redis Cluster 端点列表。
+- `REDIS_CLUSTER_URL=host:port`：单个 Redis Cluster 引导端点。源码把完整值作为 `redis.ClusterOptions.Addrs` 的一个元素，不解析逗号列表。
 
 不要把 Sentinel 的 `26379` 端口配置给应用。Sentinel 可以作为 Redis 主从选主和运维查询机制，但应用前面仍需要单一 `host:port` 入口。下面的清单是最小 StatefulSet 示例；生产高可用建议使用 Redis Operator、云托管 Redis，或 Redis 主从 + HAProxy/VIP。
 
@@ -686,10 +719,21 @@ spec:
     targetPort: 6379
 ```
 
-### 4.8 PostgreSQL (主从复制)
+### 4.8 PostgreSQL（仅开发示例，非 HA）
+
+下面的普通 StatefulSet 不配置流复制、leader election 或故障切换，因此只能作为单实例开发样例。生产环境应使用外部托管 PostgreSQL，或 CloudNativePG、Zalando Postgres Operator 等经过验证的 HA 方案；不要把多个独立 `postgres` 容器当作主从集群。
 
 ```yaml
 # postgres-statefulset.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: e2b
+type: Opaque
+stringData:
+  password: "replace-with-the-password-used-in-POSTGRES_CONNECTION_STRING"
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -697,7 +741,7 @@ metadata:
   namespace: e2b
 spec:
   serviceName: postgres
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: postgres
@@ -754,7 +798,7 @@ spec:
   ports:
   - port: 5432
     targetPort: 5432
-  clusterIP: None
+  type: ClusterIP
 ```
 
 ### 4.9 Ingress
@@ -775,7 +819,7 @@ spec:
   tls:
   - hosts:
     - api.e2b.your-domain.com
-    - sandbox.e2b.your-domain.com
+    - "*.e2b.your-domain.com"
     secretName: e2b-tls
   rules:
   - host: api.e2b.your-domain.com
@@ -788,7 +832,7 @@ spec:
             name: e2b-api
             port:
               number: 80
-  - host: "*.sandbox.e2b.your-domain.com"
+  - host: "*.e2b.your-domain.com"
     http:
       paths:
       - path: /
@@ -799,6 +843,8 @@ spec:
             port:
               number: 3002
 ```
+
+客户端将 `E2B_DOMAIN` 设为 `e2b.your-domain.com`。SDK 会访问 `api.e2b.your-domain.com`，并把 Sandbox 流量发往 `{port}-{sandboxID}.e2b.your-domain.com`；因此 TLS 证书和 Ingress 必须覆盖 `*.e2b.your-domain.com`。
 
 ### 4.10 ServiceAccount & RBAC
 
@@ -817,28 +863,27 @@ metadata:
   namespace: e2b
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: e2b-orchestrator
+  name: e2b-api-pod-reader
+  namespace: e2b
 rules:
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list", "watch"]
-- apiGroups: [""]
-  resources: ["nodes"]
-  verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: e2b-orchestrator
+  name: e2b-api-pod-reader
+  namespace: e2b
 subjects:
 - kind: ServiceAccount
-  name: e2b-orchestrator
+  name: e2b-api
   namespace: e2b
 roleRef:
-  kind: ClusterRole
-  name: e2b-orchestrator
+  kind: Role
+  name: e2b-api-pod-reader
   apiGroup: rbac.authorization.k8s.io
 ```
 
@@ -857,8 +902,8 @@ POSTGRES_CONNECTION_STRING=postgresql://e2b:password@postgres:5432/e2b
 # Redis
 # 单端点模式：指向 Redis 主节点前面的 Service / HAProxy / VIP
 REDIS_URL=redis-primary:6379
-# 或 Cluster 模式：逗号分隔多个节点
-# REDIS_CLUSTER_URL=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
+# 或 Cluster 模式：单个引导端点
+# REDIS_CLUSTER_URL=redis-cluster-bootstrap:6379
 
 # 模板存储
 TEMPLATE_BUCKET_NAME=e2b-templates
@@ -937,7 +982,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
     - port: 3000
     - port: 3002
@@ -953,11 +998,22 @@ spec:
       protocol: UDP
     - port: 53
       protocol: TCP
+  # 替换为 Kubernetes 节点内网 CIDR；API discovery 访问 5008，Client Proxy 访问 5007。
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    ports:
+    - port: 5007
+      protocol: TCP
+    - port: 5008
+      protocol: TCP
   - to:
     ports:
     - port: 443
     - port: 80
 ```
+
+不要原样照搬示例中的 `10.0.0.0/8`；应收窄为实际 Kubernetes 节点内网 CIDR。缺少这条 egress 时，启用该 NetworkPolicy 会阻断 API 到 discovery 返回的 `HostIP:5008`，也会阻断 Client Proxy 到 Orchestrator proxy 的节点端口 `5007`。
 
 ### 6.2 模板存储选项
 
@@ -988,16 +1044,25 @@ spec:
 
 ### 7.1 可选组件部署
 
+下面是单实例 ClickHouse 示例，只用于功能验证，不包含复制或故障切换。生产环境应使用 ClickHouse Operator、托管服务或其他已验证的复制拓扑。
+
 ```yaml
-# clickhouse-statefulset.yaml (可选)
+# clickhouse-statefulset.yaml（可选，非 HA）
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: clickhouse
   namespace: e2b
 spec:
+  serviceName: clickhouse
   replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse
   template:
+    metadata:
+      labels:
+        app: clickhouse
     spec:
       containers:
       - name: clickhouse
@@ -1008,6 +1073,31 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /var/lib/clickhouse
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: e2b
+spec:
+  selector:
+    app: clickhouse
+  ports:
+  - name: http
+    port: 8123
+    targetPort: 8123
+  - name: native
+    port: 9000
+    targetPort: 9000
 ```
 
 ### 7.2 Grafana + Loki (可选)
@@ -1099,12 +1189,9 @@ kubectl apply -f namespace.yaml
 # 2. 创建 RBAC
 kubectl apply -f rbac.yaml
 
-# 3. 创建 ConfigMap 和 Secret
+# 3. 替换 secrets.yaml 中的占位符，然后创建 ConfigMap 和 Secret
 kubectl apply -f configmap.yaml
-kubectl create secret generic e2b-secrets --namespace e2b \
-  --from-literal=POSTGRES_CONNECTION_STRING="..." \
-  --from-literal=REDIS_URL="..." \
-  --from-literal=ADMIN_TOKEN="..."
+kubectl apply -f secrets.yaml
 
 # 4. 部署数据层
 kubectl apply -f redis-statefulset.yaml
@@ -1114,11 +1201,13 @@ kubectl apply -f postgres-statefulset.yaml
 kubectl wait --for=condition=ready pod -l app=redis -n e2b --timeout=120s
 kubectl wait --for=condition=ready pod -l app=postgres -n e2b --timeout=120s
 
-# 6. 运行数据库迁移
-kubectl run migration --rm -it --namespace e2b \
-  --image=e2b/api:latest \
-  --env="POSTGRES_CONNECTION_STRING=..." \
-  -- ./migrate
+# 6. 从固定子模块构建并发布 migrator，然后运行数据库迁移
+docker build -f infra/packages/db/Dockerfile \
+  -t registry.example.com/e2b/db-migrator:2026.28 infra/packages
+docker push registry.example.com/e2b/db-migrator:2026.28
+kubectl run db-migration --rm -it --restart=Never --namespace e2b \
+  --image=registry.example.com/e2b/db-migrator:2026.28 \
+  --env="POSTGRES_CONNECTION_STRING=..."
 
 # 7. 部署应用层
 kubectl apply -f api-deployment.yaml
@@ -1135,4 +1224,4 @@ kubectl logs -f deployment/e2b-api -n e2b
 
 ---
 
-*文档同步至上游 e2b-dev/infra 仓库 tag 2026.28*
+*文档同步至上游 e2b-dev/infra 仓库 tag 2026.28，commit fda7bef1095afb909197e272c0a8a123797f0bfb*

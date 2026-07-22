@@ -1,5 +1,7 @@
 # E2B Ansible 部署指南
 
+> 上游事实基线：`e2b-dev/infra` tag `2026.28`，commit `fda7bef1095afb909197e272c0a8a123797f0bfb`。`ansible/` 是本仓库增强资产，不属于上游子模块；其模板已按该提交的运行时契约核对。
+
 ## 目录结构
 
 ```
@@ -21,6 +23,8 @@ ansible/
     ├── client-proxy/              # Client Proxy (必需)
     ├── orchestrator/              # Orchestrator (必需)
     ├── template-manager/          # Template Manager (可选)
+    ├── dashboard-api/             # Dashboard API (可选)
+    ├── dashboard/                 # Dashboard Frontend (可选、本地固定版本)
     └── nginx/                     # Nginx 负载均衡
 ```
 
@@ -115,8 +119,8 @@ ansible-playbook -i inventories/production/hosts.ini playbooks/verify.yml
 
 | 组件 | Tag | 必需 | 说明 |
 |------|-----|------|------|
-| PostgreSQL | `postgresql` | ✅ | 主从复制 |
-| Redis | `redis` | ✅ | Sentinel 模式 |
+| PostgreSQL | `postgresql` | ✅ | 流复制，不含自动选主 |
+| Redis | `redis` | ✅ | 主从 + Sentinel；应用仍需稳定主端点 |
 | Nomad | `nomad` | ✅ | 服务器+客户端 |
 | API | `api` | ✅ | HTTP/gRPC 接口 |
 | Client Proxy | `client-proxy` | ✅ | 流量代理 |
@@ -125,6 +129,8 @@ ansible-playbook -i inventories/production/hosts.ini playbooks/verify.yml
 | Dashboard API | `dashboard-api` | ⚠️ | Web 管理后端 |
 | Dashboard | `dashboard` | ⚠️ | Web 管理前端 |
 | Nginx | `nginx` | ✅ | 负载均衡 |
+
+PostgreSQL role 不安装 Patroni、repmgr 等自动故障切换组件，默认连接串仍指向 inventory 中标记为 primary 的固定主机。Redis role 会安装 Sentinel，但 Nginx role 不为 Redis 提供 HAProxy/VIP，E2B 进程也不会查询 Sentinel。仅运行这些 role 不等于获得数据层自动 HA；生产环境必须另行提供稳定写端点和切换流程，并把 `postgres_connection_string`、`redis_url` 指向这些端点。
 
 ## 可选组件
 
@@ -135,7 +141,7 @@ ansible-playbook -i inventories/production/hosts.ini playbooks/verify.yml
 dashboard_enabled: true
 dashboard_install_method: source
 dashboard_session_secret: "至少 32 字符的随机值"
-auth_provider_config: '{"jwt":[]}'
+auth_provider_config: '{"jwt":[{"issuer":{"url":"https://auth.example.com","audiences":["e2b-dashboard"],"audienceMatchPolicy":"MatchAny"},"cacheDuration":"30m"}]}'
 ory_sdk_url: "https://ory.example.com"
 ory_project_api_token: "your-ory-project-token"
 ory_issuer_url: "https://auth.example.com"
@@ -157,6 +163,15 @@ clickhouse_enabled: true
 
 # 启用 Loki
 loki_enabled: true
+```
+
+`clickhouse_enabled` 和 `loki_enabled` 只让服务模板引用 inventory 中 `[clickhouse]`、`[loki]` 组的外部地址。当前资产没有 ClickHouse 或 Loki 安装 role，也不会初始化它们；启用开关前必须自行部署这些服务。远端 ClickHouse 应使用实际连接串运行 migration，不能使用硬编码 `localhost:9000/default` 的 `migrate-local`：
+
+```bash
+GOOSE_DRIVER=clickhouse \
+GOOSE_DBSTRING="$CLICKHOUSE_CONNECTION_STRING" \
+go -C infra/packages/clickhouse tool goose \
+  -table "_migrations" -dir migrations up
 ```
 
 当前 Dashboard role 只实现 `source` 安装方式；配置其他值会在部署前失败。启用 Dashboard 时，Nginx 会分别暴露 `dashboard_domain` 和 `dashboard_api_domain`；Client Proxy 调用 API 的 internal gRPC 则通过 `api_domain:5009` 转发。请确保负载均衡节点的网络策略允许客户端代理访问 TCP `5009`。
@@ -186,3 +201,7 @@ ansible-playbook -i inventories/production/hosts.ini playbooks/cleanup.yml
 ```
 
 **警告**: 清理会停止部署服务并删除 `e2b_base_dir` 下的运行时、模板和构建缓存。PostgreSQL、Redis 与 Nomad 的独立数据目录不会被删除。
+
+---
+
+*文档同步至上游 e2b-dev/infra 仓库 tag 2026.28，commit fda7bef1095afb909197e272c0a8a123797f0bfb*
