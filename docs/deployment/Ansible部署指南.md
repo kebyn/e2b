@@ -33,7 +33,7 @@ ansible/
 1. **控制节点**: 安装 `ansible-core` 2.15+（Redis 仓库任务使用 `deb822_repository`）
 2. **目标节点**: Ubuntu 22.04+, SSH 免密登录
 3. **二进制文件**: `infra/packages/*/bin/` 目录下已有编译好的二进制
-4. **DNS**: `api.<domain>`、`*.sandbox.<domain>` 指向负载均衡节点；若使用上游稳定共享入口，还要单独让 `sandbox.<domain>` 指向同一入口（DNS 通配符不匹配 apex），并转发 `E2b-Sandbox-Id` 与 `E2b-Sandbox-Port`；启用 Dashboard 时再配置 `dashboard.<domain>` 与 `dashboard-api.<domain>`
+4. **DNS**: 标准客户端在 `E2B_DOMAIN=<domain>` 下访问 `{port}-{sandboxID}.<domain>`；但当前 Ansible Nginx 模板的 Sandbox `server_name` 只有 `*.sandbox.<domain>`，默认资产并不承接这个标准 Host。可工作的外部入口必须同时接收 `{port}-{sandboxID}.<domain>` 和 `sandbox.<domain>`，保留原始 Host 以及 `E2b-Sandbox-Id`、`E2b-Sandbox-Port`，再转发到 Client Proxy；启用 Dashboard 时另需配置 `dashboard.<domain>` 与 `dashboard-api.<domain>`
 
 Nomad Client 必须分成两个节点池。Orchestrator 使用 `default`，Template Manager 使用 `build`；两者的 gRPC 固定端口都是 `5008`，不能调度到同一主机。示例 inventory 已通过 `orchestrator`、`template_manager` 两个子组建立该隔离。
 
@@ -75,7 +75,7 @@ public_url_scheme: http
 
 首次 ACL bootstrap 得到的 Token 会以 root-only `0600` 权限保存在首台 Nomad Server。后续完整部署、按 tag 部署和验证 playbook 都会复用它；如果集群已初始化但该文件丢失，必须恢复文件或填写 `nomad_token`，playbook 不会尝试二次 bootstrap。
 
-当前 Ansible Nginx 模板的 Sandbox `server_name` 只有 `*.sandbox.<domain>`，不会匹配 `sandbox.<domain>` 本身；因此现有资产默认只覆盖其通配 Host 入口。要使用 `sandbox.<domain>` + routing Header 的稳定共享入口，需在外部 LB/Nginx 显式接收该精确 Host 并转发到 Client Proxy。这里记录的是资产边界，本次上游文档同步不修改 Ansible 模板。
+当前 Ansible Nginx 模板的 Sandbox `server_name` 只有 `*.sandbox.<domain>`。这既不会匹配 `sandbox.<domain>` 本身，也不会匹配标准客户端生成的 `{port}-{sandboxID}.<domain>`；因此现有资产不能直接承接标准 Host 寻址，也不只是缺少 `sandbox.<domain>` 这个共享入口。要提供可工作的外部入口，需由外部 LB/Nginx 同时接收 `{port}-{sandboxID}.<domain>` 和 `sandbox.<domain>`，保留原始 Host 与两个 routing Header，并将两类请求转发到 Client Proxy。这里记录的是资产边界，本次上游文档同步不修改 Ansible 模板。
 
 `STORAGE_PROVIDER=Local` 只在单节点或共享文件系统上成立。多个 Orchestrator 或启用独立 Template Manager 时，应先把 `local_template_storage_base_path` 和 `local_build_cache_storage_base_path` 以 NFS 等方式挂载到所有相关节点的相同路径，再设置：
 
