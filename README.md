@@ -2,6 +2,8 @@
 
 本仓库是 `e2b-dev/infra` 的中文私有化部署文档壳。根目录只保留仓库入口、元文件、上游子模块和少量增强部署资产；中文部署分析、运行手册和参考文档统一维护在 `docs/` 子目录。上游工程源码、IaC、CI、OpenAPI、脚本、测试和英文开发文档都以 `infra/` Git submodule 为准。
 
+当前事实基线固定为上游正式标签 `2026.28`，提交 `fda7bef1095afb909197e272c0a8a123797f0bfb`。中文文档中的当前行为均应能由该子模块中的源码、英文文档、环境模板、部署定义或 migration 验证；上游滚动分支不作为当前文档依据。
+
 ## 初始化
 
 克隆后先拉取子模块：
@@ -39,6 +41,8 @@ make -C infra/packages/db migrate
 - GitHub Actions 和代码质量配置：`infra/.github/`
 - 脚本、测试、Grafana、fixtures：`infra/scripts/`、`infra/tests/`、`infra/grafana/`、`infra/fixtures/`
 - 英文开发文档：`infra/self-host.md`、`infra/DEV-LOCAL.md`、`infra/DEV.md`、`infra/CONTRIBUTING.md`、`infra/CLAUDE.md`
+
+不要把子模块中的英文文档复制到根仓库。更新上游版本时，应先移动 `infra/` gitlink，再按固定提交审计中文文档，保证源码和文档使用同一事实基线。
 
 ## 阅读导航
 
