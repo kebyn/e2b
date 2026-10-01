@@ -70,7 +70,8 @@ make -C infra/packages/db migrate
 
 ### 上游同步与 Daytona
 
-- 上游 `2026.17` 到 `2026.28` 同步影响：[`docs/upstream/上游同步说明-2026.17-to-2026.28.md`](./docs/upstream/上游同步说明-2026.17-to-2026.28.md)
+- 上游 `2026.28` 到 `2026.30` 同步影响：[`docs/upstream/上游同步说明-2026.28-to-2026.30.md`](./docs/upstream/上游同步说明-2026.28-to-2026.30.md)
+- 上游 `2026.17` 到 `2026.28` 同步影响（历史）：[`docs/upstream/上游同步说明-2026.17-to-2026.28.md`](./docs/upstream/上游同步说明-2026.17-to-2026.28.md)
 - AI Agent Sandbox 产品对比：[`docs/daytona/sandbox-detailed-comparison.md`](./docs/daytona/sandbox-detailed-comparison.md)
 - Daytona Kubernetes 部署：[`docs/daytona/k8s-production-deployment.md`](./docs/daytona/k8s-production-deployment.md)
 
