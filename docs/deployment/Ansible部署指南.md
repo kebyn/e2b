@@ -1,6 +1,6 @@
 # E2B Ansible 部署指南
 
-> 上游事实基线：`e2b-dev/infra` tag `2026.28`，commit `fda7bef1095afb909197e272c0a8a123797f0bfb`。`ansible/` 是本仓库增强资产，不属于上游子模块；其模板已按该提交的运行时契约核对。
+> 上游事实基线：`e2b-dev/infra` tag `2026.30`，commit `f32ee8a2a50052f32e3632ceb451111a98dd5104`。`ansible/` 是本仓库增强资产，不属于上游子模块；其模板已按该提交的运行时契约核对。`2026.30` 同步时已从模板移除上游删除的变量（`USE_LOCAL_NAMESPACE_STORAGE`、Dashboard API 的 `ORY_ISSUER_URL`）；`LAUNCH_DARKLY_API_KEY` 仍有效（改由共享 Feature Flags 客户端读取）。
 
 ## 目录结构
 
@@ -75,7 +75,7 @@ public_url_scheme: http
 
 首次 ACL bootstrap 得到的 Token 会以 root-only `0600` 权限保存在首台 Nomad Server。后续完整部署、按 tag 部署和验证 playbook 都会复用它；如果集群已初始化但该文件丢失，必须恢复文件或填写 `nomad_token`，playbook 不会尝试二次 bootstrap。
 
-当前 Ansible Nginx 模板的 Sandbox `server_name` 只有 `*.sandbox.<domain>`。这既不会匹配 `sandbox.<domain>` 本身，也不会匹配标准客户端生成的 `{port}-{sandboxID}.<domain>`；因此现有资产不能直接承接标准 Host 寻址，也不只是缺少 `sandbox.<domain>` 这个共享入口。要提供可工作的外部入口，需由外部 LB/Nginx 同时接收 `{port}-{sandboxID}.<domain>` 和 `sandbox.<domain>`，保留原始 Host 与两个 routing Header，并将两类请求转发到 Client Proxy。这里记录的是资产边界，本次上游文档同步不修改 Ansible 模板。
+当前 Ansible Nginx 模板的 Sandbox `server_name` 只有 `*.sandbox.<domain>`。这既不会匹配 `sandbox.<domain>` 本身，也不会匹配标准客户端生成的 `{port}-{sandboxID}.<domain>`；因此现有资产不能直接承接标准 Host 寻址，也不只是缺少 `sandbox.<domain>` 这个共享入口。要提供可工作的外部入口，需由外部 LB/Nginx 同时接收 `{port}-{sandboxID}.<domain>` 和 `sandbox.<domain>`，保留原始 Host 与两个 routing Header，并将两类请求转发到 Client Proxy。这里记录的是资产边界；上游同步只清理失效变量，不改变该边界。
 
 `STORAGE_PROVIDER=Local` 只在单节点或共享文件系统上成立。多个 Orchestrator 或启用独立 Template Manager 时，应先把 `local_template_storage_base_path` 和 `local_build_cache_storage_base_path` 以 NFS 等方式挂载到所有相关节点的相同路径，再设置：
 
@@ -146,6 +146,8 @@ dashboard_session_secret: "至少 32 字符的随机值"
 auth_provider_config: '{"jwt":[{"issuer":{"url":"https://auth.example.com","audiences":["e2b-dashboard"],"audienceMatchPolicy":"MatchAny"},"cacheDuration":"30m"}]}'
 ory_sdk_url: "https://ory.example.com"
 ory_project_api_token: "your-ory-project-token"
+# ory_issuer_url 供 Dashboard 前端 OAuth 使用；Dashboard API 自 2026.30 起从
+# AUTH_PROVIDER_CONFIG 的 JWT issuer 集合解析，不再读取独立 ORY_ISSUER_URL 变量
 ory_issuer_url: "https://auth.example.com"
 dashboard_ory_oauth2_client_id: "dashboard-web-client"
 dashboard_ory_oauth2_client_secret: "your-oauth-client-secret"
@@ -206,4 +208,4 @@ ansible-playbook -i inventories/production/hosts.ini playbooks/cleanup.yml
 
 ---
 
-*文档同步至上游 e2b-dev/infra 仓库 tag 2026.28，commit fda7bef1095afb909197e272c0a8a123797f0bfb*
+*文档同步至上游 e2b-dev/infra 仓库 tag 2026.30，commit f32ee8a2a50052f32e3632ceb451111a98dd5104*

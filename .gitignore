@@ -16,3 +16,6 @@ terraform.tfstate*
 .infisical.json
 **/bin/
 temp/
+
+__pycache__/
+*.pyc

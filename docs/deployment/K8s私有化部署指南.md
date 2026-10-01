@@ -1,8 +1,8 @@
 # E2B Kubernetes 私有化部署完整指南
 
-> 本文档是 **Kubernetes 私有化部署专线文档**：负责说明如何用 `2026.28` 已内置的 Kubernetes service discovery 部署 E2B，不维护通用裸机 / Docker / Nomad 部署步骤。
+> 本文档是 **Kubernetes 私有化部署专线文档**：负责说明如何用 `2026.30` 已内置的 Kubernetes service discovery 部署 E2B，不维护通用裸机 / Docker / Nomad 部署步骤。
 >
-> 事实基线：上游 commit `fda7bef1095afb909197e272c0a8a123797f0bfb`。该版本内置 API 的 Kubernetes discovery，但不提供完整的 Orchestrator / Template Manager Kubernetes 运行清单。本文镜像名均为占位符；API 与 Client Proxy 可从固定子模块的 Dockerfile 构建，Orchestrator 还需要包含兼容 glibc 的自定义运行镜像和宿主机运行资产。
+> 事实基线：上游 tag `2026.30`，commit `f32ee8a2a50052f32e3632ceb451111a98dd5104`。该版本内置 API 的 Kubernetes discovery，但不提供完整的 Orchestrator / Template Manager Kubernetes 运行清单。本文镜像名均为占位符；API 与 Client Proxy 可从固定子模块的 Dockerfile 构建，Orchestrator 还需要包含兼容 glibc 的自定义运行镜像和宿主机运行资产。
 >
 > 相关文档：
 > - [`README.md`](../../README.md)：仓库总入口与文档导航
@@ -19,7 +19,7 @@
 - 先完成镜像、宿主机资产和占位 secret 准备，再按本文档顺序应用清单
 
 ### 如果你只是确认 K8s 是否还需要改代码
-- 看 [3. 2026.28 内置 K8s 支持](#3-202628-内置-k8s-支持)
+- 看 [3. 2026.30 内置 K8s 支持](#3-202630-内置-k8s-支持)
 
 ### 如果你在查环境变量或组件取舍
 - 变量看 [`启动参数详解.md`](../reference/启动参数详解.md#阅读导航)，组件取舍看 [`私有化部署组件分析.md`](../architecture/私有化部署组件分析.md#阅读导航)
@@ -30,7 +30,7 @@
 
 1. [架构概述](#1-架构概述)
 2. [前置条件](#2-前置条件)
-3. [2026.28 内置 K8s 支持](#3-202628-内置-k8s-支持)
+3. [2026.30 内置 K8s 支持](#3-202630-内置-k8s-支持)
 4. [K8s 部署清单](#4-k8s-部署清单)
 5. [配置管理](#5-配置管理)
 6. [网络与存储](#6-网络与存储)
@@ -178,9 +178,9 @@ Orchestrator 需要以下特权（用于管理 sandbox）：
 
 ---
 
-## 3. 2026.28 内置 K8s 支持
+## 3. 2026.30 内置 K8s 支持
 
-`2026.28` 已经内置 Kubernetes 服务发现，不需要再新增 discovery 代码或修改 API 启动逻辑。当前代码中的入口如下：
+`2026.30` 已经内置 Kubernetes 服务发现，不需要再新增 discovery 代码或修改 API 启动逻辑。当前代码中的入口如下：
 
 | 能力 | 当前代码 |
 |------|----------|
@@ -202,9 +202,12 @@ K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR=app.kubernetes.io/name=template-manager
 
 | 值 | 说明 |
 |----|------|
-| `nomad` | 默认值，查询 Nomad API |
-| `kubernetes` | 查询当前 Pod ServiceAccount 可访问的 K8s API |
+| `nomad` | 查询 Nomad API；未设置 provider 时非 `local` 环境按此解析（`2026.30` 起不再有显式默认值，未设置与显式 `nomad` 可区分） |
+| `kubernetes` | 查询 K8s API；默认使用 Pod 自身 ServiceAccount，仅集群内有效 |
+| `nomad+kubernetes` | `2026.30` 新增：两平台并集（去重），用于迁移期 |
 | `local` | 使用 `LOCAL_ORCHESTRATOR_ADDRESS` 指向单个 Orchestrator，主要用于本地开发 |
+
+`2026.30` 新增 `K8S_API_ENDPOINT`：为空时使用 Pod 自身 ServiceAccount（仅集群内有效）；设置后可从集群外部经 Google ADC 访问目标集群的 K8s API。
 
 ### 3.2 K8s RBAC 要求
 
@@ -212,11 +215,11 @@ API Pod 需要能 list/watch Pod，至少应授予当前 namespace 内 `pods` �
 
 ### 3.3 不再需要的旧改造
 
-早期文档建议新增 `K8sServiceDiscovery`、`ServiceDiscoveryConfig` 或 `IP_SLOT_STORAGE`。这些不再适用于 `2026.28`：
+早期文档建议新增 `K8sServiceDiscovery`、`ServiceDiscoveryConfig` 或 `IP_SLOT_STORAGE`。这些不再适用于 `2026.30`：
 
 - 不要把 provider 值写成旧简称 `k8s`，当前枚举值是 `kubernetes`。
 - 不要新增旧式静态配置文件变量作为官方路径，当前本地静态模式使用 `LOCAL_ORCHESTRATOR_ADDRESS`。
-- Orchestrator IP slot 仍由现有网络配置控制；本文部署清单可使用 `USE_LOCAL_NAMESPACE_STORAGE=true` 做单节点/每节点独立分配，但这不是 API 服务发现配置。
+- Orchestrator IP slot 由现有网络配置控制，slot 状态只保存在各 Orchestrator 进程内（`2026.30` 起 Consul KV 存储已移除，`USE_LOCAL_NAMESPACE_STORAGE` 不再存在）；这与 API 服务发现配置无关。
 
 ---
 
@@ -249,7 +252,6 @@ data:
   K8S_NAMESPACE: "e2b"
   K8S_ORCHESTRATOR_POD_LABEL_SELECTOR: "app.kubernetes.io/name=orchestrator"
   K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR: "app.kubernetes.io/name=template-manager"
-  USE_LOCAL_NAMESPACE_STORAGE: "true"
   STORAGE_PROVIDER: "GCPBucket"
 
   # ClickHouse（可选）
@@ -641,7 +643,7 @@ spec:
 
 > 上面的 DaemonSet 只部署 Orchestrator runtime。需要在线构建模板时，还必须部署带 `app.kubernetes.io/name=template-manager` label 的 Template Manager；它应使用 `hostNetwork: true`、监听 `5008`，并调度到不运行 Orchestrator 的独立 build 节点。
 
-`2026.28` 的应用侧 Redis 客户端只支持两类连接：
+`2026.30` 的应用侧 Redis 客户端只支持两类连接：
 
 - `REDIS_URL=host:port`：单 Redis 端点。生产环境可在 Redis 主从前放 HAProxy/VIP/云 LB，让应用始终连接当前主节点。
 - `REDIS_CLUSTER_URL=host:port`：单个 Redis Cluster 引导端点。源码把完整值作为 `redis.ClusterOptions.Addrs` 的一个元素，不解析逗号列表。
@@ -924,6 +926,10 @@ BUILD_CACHE_BUCKET_NAME=e2b-build-cache
 # AWS S3 / MinIO: STORAGE_PROVIDER=AWSBucket
 # 本地/NFS 共享目录: STORAGE_PROVIDER=Local，并设置 LOCAL_TEMPLATE_STORAGE_BASE_PATH
 STORAGE_PROVIDER=GCPBucket
+# 2026.30 起推荐 per-role 存储 URL（未设置时旧风格变量自动转换为等价 URL）：
+# TEMPLATE_STORAGE_URL=gs://my-template-bucket
+# BUILD_CACHE_STORAGE_URL=s3://my-cache-bucket?region=us-east-1
+# 支持 gs:// s3:// azblob://（Azure Blob，2026.30 新增）和 file:// 四种 scheme
 # MinIO path-style 访问通常需要：
 # AWS_ENDPOINT_URL=http://minio.e2b.svc.cluster.local:9000
 # S3_USE_PATH_STYLE=true
@@ -936,9 +942,6 @@ K8S_NAMESPACE=e2b
 K8S_ORCHESTRATOR_POD_LABEL_SELECTOR=app.kubernetes.io/name=orchestrator
 K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR=app.kubernetes.io/name=template-manager
 
-# IP 槽位存储（避免使用 Consul）
-USE_LOCAL_NAMESPACE_STORAGE=true
-
 # === 可选配置 ===
 
 # 认证 provider
@@ -946,7 +949,7 @@ AUTH_PROVIDER_CONFIG='{"jwt":[]}'
 ADMIN_TOKEN=xxx
 ORY_SDK_URL=https://your-ory.example.com
 ORY_PROJECT_API_TOKEN=xxx
-ORY_ISSUER_URL=https://your-ory.example.com
+# Ory issuer 从 AUTH_PROVIDER_CONFIG 的 JWT issuer 集合解析（2026.30 起无独立 ORY_ISSUER_URL 变量）
 
 # Volume Token
 VOLUME_TOKEN_ISSUER=e2b.your-domain.com
@@ -1215,11 +1218,14 @@ kubectl wait --for=condition=ready pod -l app=postgres -n e2b --timeout=120s
 
 # 6. 从固定子模块构建并发布 migrator，然后运行数据库迁移
 docker build -f infra/packages/db/Dockerfile \
-  -t registry.example.com/e2b/db-migrator:2026.28 infra/packages
-docker push registry.example.com/e2b/db-migrator:2026.28
+  -t registry.example.com/e2b/db-migrator:2026.30 infra/packages
+docker push registry.example.com/e2b/db-migrator:2026.30
 kubectl run db-migration --rm -it --restart=Never --namespace e2b \
-  --image=registry.example.com/e2b/db-migrator:2026.28 \
+  --image=registry.example.com/e2b/db-migrator:2026.30 \
   --env="POSTGRES_CONNECTION_STRING=..."
+# 从 2026.28 升级的部署：2026.28→2026.30 之间上游新增 24 个 migration
+#（含 DROP access_tokens、teams.ory_organization_id、project limits/projection ledger、
+#  默认 team 名称改为 project 等），必须先备份再单独执行 migration
 
 # 7. 部署应用层
 kubectl apply -f api-deployment.yaml
@@ -1236,4 +1242,4 @@ kubectl logs -f deployment/e2b-api -n e2b
 
 ---
 
-*文档同步至上游 e2b-dev/infra 仓库 tag 2026.28，commit fda7bef1095afb909197e272c0a8a123797f0bfb*
+*文档同步至上游 e2b-dev/infra 仓库 tag 2026.30，commit f32ee8a2a50052f32e3632ceb451111a98dd5104*
