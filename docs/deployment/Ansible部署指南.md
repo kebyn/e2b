@@ -1,6 +1,6 @@
 # E2B Ansible 部署指南
 
-> 上游事实基线：`e2b-dev/infra` tag `2026.30`，commit `f32ee8a2a50052f32e3632ceb451111a98dd5104`。`ansible/` 是本仓库增强资产，不属于上游子模块；其模板已按该提交的运行时契约核对。`2026.30` 同步时已从模板移除上游删除的变量（`USE_LOCAL_NAMESPACE_STORAGE`、Dashboard API 的 `ORY_ISSUER_URL`）；`LAUNCH_DARKLY_API_KEY` 仍有效（改由共享 Feature Flags 客户端读取）。
+> 上游事实基线：`e2b-dev/runtime` tag `2026.30`，commit `f32ee8a2a50052f32e3632ceb451111a98dd5104`。`ansible/` 是本仓库增强资产，不属于上游子模块；其模板已按该提交的运行时契约核对。`2026.30` 同步时已从模板移除上游删除的变量（`USE_LOCAL_NAMESPACE_STORAGE`、Dashboard API 的 `ORY_ISSUER_URL`）；`LAUNCH_DARKLY_API_KEY` 仍有效（改由共享 Feature Flags 客户端读取）。
 
 ## 目录结构
 
@@ -208,4 +208,4 @@ ansible-playbook -i inventories/production/hosts.ini playbooks/cleanup.yml
 
 ---
 
-*文档同步至上游 e2b-dev/infra 仓库 tag 2026.30，commit f32ee8a2a50052f32e3632ceb451111a98dd5104*
+*文档同步至上游 e2b-dev/runtime 仓库 tag 2026.30，commit f32ee8a2a50052f32e3632ceb451111a98dd5104*

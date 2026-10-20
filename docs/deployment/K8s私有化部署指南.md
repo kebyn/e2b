@@ -1242,4 +1242,4 @@ kubectl logs -f deployment/e2b-api -n e2b
 
 ---
 
-*文档同步至上游 e2b-dev/infra 仓库 tag 2026.30，commit f32ee8a2a50052f32e3632ceb451111a98dd5104*
+*文档同步至上游 e2b-dev/runtime 仓库 tag 2026.30，commit f32ee8a2a50052f32e3632ceb451111a98dd5104*

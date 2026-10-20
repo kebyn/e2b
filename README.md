@@ -1,6 +1,6 @@
 # E2B Infra 私有化部署文档
 
-本仓库是 `e2b-dev/infra` 的中文私有化部署文档壳。根目录只保留仓库入口、元文件、上游子模块和少量增强部署资产；中文部署分析、运行手册和参考文档统一维护在 `docs/` 子目录。上游工程源码、IaC、CI、OpenAPI、脚本、测试和英文开发文档都以 `infra/` Git submodule 为准。
+本仓库是 `e2b-dev/runtime` 的中文私有化部署文档壳。根目录只保留仓库入口、元文件、上游子模块和少量增强部署资产；中文部署分析、运行手册和参考文档统一维护在 `docs/` 子目录。上游工程源码、IaC、CI、OpenAPI、脚本、测试和英文开发文档都以 `infra/` Git submodule 为准。
 
 当前事实基线固定为上游正式标签 `2026.30`，提交 `f32ee8a2a50052f32e3632ceb451111a98dd5104`。中文文档中的当前行为均应能由该子模块中的源码、英文文档、环境模板、部署定义或 migration 验证；上游滚动分支不作为当前文档依据。
 
@@ -70,6 +70,7 @@ make -C infra/packages/db migrate
 
 ### 上游同步与 Daytona
 
+- 上游正式版本检查（截至 2026-10-20）：[`docs/upstream/上游正式版本审计-2026-10-20.md`](./docs/upstream/上游正式版本审计-2026-10-20.md)
 - 上游 `2026.28` 到 `2026.30` 同步影响：[`docs/upstream/上游同步说明-2026.28-to-2026.30.md`](./docs/upstream/上游同步说明-2026.28-to-2026.30.md)
 - 上游 `2026.17` 到 `2026.28` 同步影响（历史）：[`docs/upstream/上游同步说明-2026.17-to-2026.28.md`](./docs/upstream/上游同步说明-2026.17-to-2026.28.md)
 - AI Agent Sandbox 产品对比：[`docs/daytona/sandbox-detailed-comparison.md`](./docs/daytona/sandbox-detailed-comparison.md)

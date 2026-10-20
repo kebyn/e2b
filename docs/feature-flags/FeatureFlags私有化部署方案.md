@@ -4,7 +4,7 @@
 >
 > 本文档不维护服务启动参数全集或整体组件取舍；这些内容分别由参数文档和组件分析文档维护。
 >
-> 基线：上游 `e2b-dev/infra` tag `2026.30`，commit `f32ee8a2a50052f32e3632ceb451111a98dd5104`，以 `infra/packages/shared/pkg/featureflags/flags.go` 为准。
+> 基线：上游 `e2b-dev/runtime` tag `2026.30`，commit `f32ee8a2a50052f32e3632ceb451111a98dd5104`，以 `infra/packages/shared/pkg/featureflags/flags.go` 为准。
 >
 > 相关文档：
 > - [`README.md`](../../README.md)：仓库总入口与文档导航
@@ -293,4 +293,4 @@ json_flags:
 
 ---
 
-*文档同步至上游 e2b-dev/infra 仓库 tag 2026.30*
+*文档同步至上游 e2b-dev/runtime 仓库 tag 2026.30*
